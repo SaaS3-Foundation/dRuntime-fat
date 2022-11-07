@@ -179,18 +179,18 @@ mod sample_oracle {
 
             // TODO check resp code
             let body = resp.body;
-            let root = serde_json::from_slice::<serde_json::Value>(&body)
-                .or(Err(Error::FailedToDecodeResBody))?;
+            // let root = serde_json::from_slice::<serde_json::Value>(&body)
+                //.or(Err(Error::FailedToDecodeResBody))?;
 
             // TODO use macro to generate the code
             // 1. get path field
             // 2. generate the code
-            let match_result = root.as_u64().unwrap();
+            let match_result = U256::from_little_endian(&body);
 
             // Apply the response to request
             let payload = ethabi::encode(&[
                 ethabi::Token::Uint(*rid),
-                ethabi::Token::Uint(match_result.into()),
+                ethabi::Token::Uint(match_result),
             ]);
 
             rollup
