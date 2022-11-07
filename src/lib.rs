@@ -8,7 +8,7 @@ pub use crate::sample_oracle::*;
 
 #[ink::contract(env = pink_extension::PinkEnvironment)]
 mod sample_oracle {
-    use alloc::{string::String, vec::Vec, string::ToString};
+    use alloc::{string::String, vec::Vec, string::ToString, borrow::ToOwned};
     use ink_storage::traits::{PackedLayout, SpreadLayout};
     use phat_offchain_rollup::{
         clients::evm::read::{Action, QueuedRollupSession},
@@ -32,6 +32,7 @@ mod sample_oracle {
     pub struct SampleOracle {
         owner: AccountId,
         config: Option<Config>,
+        apiconfig: Option<ApiConfig>,
     }
 
     #[derive(Encode, Decode, Debug, PackedLayout, SpreadLayout)]
@@ -42,6 +43,16 @@ mod sample_oracle {
     struct Config {
         rpc: String,
         anchor: [u8; 20],
+    }
+
+    #[derive(Encode, Decode, Debug, PackedLayout, SpreadLayout)]
+    #[cfg_attr(
+        feature = "std",
+        derive(scale_info::TypeInfo, ink_storage::traits::StorageLayout)
+    )]
+    struct ApiConfig {
+        url: String,
+        apikey: Option<String>,
     }
 
     #[derive(Encode, Decode, Debug)]
@@ -66,6 +77,7 @@ mod sample_oracle {
             Self {
                 owner: Self::env().caller(),
                 config: None,
+                apiconfig: None,
             }
         }
 
@@ -77,6 +89,13 @@ mod sample_oracle {
                 rpc,
                 anchor: anchor.into(),
             });
+            Ok(())
+        }
+
+        #[ink(message)]
+        pub fn set_apiconfig(&mut self, url: String, apikey: Option<String>) -> Result<()> {
+            self.ensure_owner()?;
+            self.apiconfig = Some(ApiConfig { url, apikey });
             Ok(())
         }
 
@@ -149,8 +168,10 @@ mod sample_oracle {
             #[cfg(feature = "std")]
             println!("Got url suffix {:?}", url_suffix);
 
+            let ApiConfig { url, apikey } = self.apiconfig.as_ref().ok_or(Error::NotConfigurated)?;
+
             let resp = http_get!(
-                "https://api.coingecko.com/api/v3/simple/price?".to_string() + &url_suffix
+                url.to_owned() + &"?".to_string() + &url_suffix
             );
 
             #[cfg(feature = "std")]
@@ -164,18 +185,12 @@ mod sample_oracle {
             // TODO use macro to generate the code
             // 1. get path field
             // 2. generate the code
-            let price = root.get("ethereum").and_then(|value| value.get("usd")).and_then(|value|value.as_f64()).unwrap();
-
-            let encoded_price = U256::from_dec_str(price.to_string().as_str()).unwrap();
-            let (onchain_price, over) = encoded_price.overflowing_mul(1000000.into());
-            if over == true {
-                return Err(Error::MultiplyTimesOverflow);
-            }
+            let match_result = root.as_u64().unwrap();
 
             // Apply the response to request
             let payload = ethabi::encode(&[
                 ethabi::Token::Uint(*rid),
-                ethabi::Token::FixedBytes(onchain_price.encode()),
+                ethabi::Token::Uint(match_result.into()),
             ]);
 
             rollup
