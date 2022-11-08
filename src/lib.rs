@@ -8,7 +8,7 @@ pub use crate::sample_oracle::*;
 
 #[ink::contract(env = pink_extension::PinkEnvironment)]
 mod sample_oracle {
-    use alloc::{string::String, vec::Vec, string::ToString, borrow::ToOwned};
+    use alloc::{borrow::ToOwned, string::String, string::ToString, vec::Vec};
     use ink_storage::traits::{PackedLayout, SpreadLayout};
     use phat_offchain_rollup::{
         clients::evm::read::{Action, QueuedRollupSession},
@@ -21,8 +21,8 @@ mod sample_oracle {
     use scale::{Decode, Encode};
 
     use abi::ABI;
-    use primitive_types::U256;
     use pink::http_get;
+    use primitive_types::U256;
     use serde_json;
 
     /// Defines the storage of your contract.
@@ -115,6 +115,10 @@ mod sample_oracle {
             let (raw_item, idx) = rollup
                 .queue_head()
                 .expect("FIXME: failed to read queue head");
+
+            #[cfg(feature = "std")]
+            println!("raw_item: {:?}, idx: {:?}", raw_item, idx);
+
             let raw_item = match raw_item {
                 Some(v) => v,
                 _ => return Ok(None),
@@ -135,7 +139,7 @@ mod sample_oracle {
                 _ => return Err(Error::FailedToDecodeStorage),
             };
 
-            // 
+            //
             //let tokens_of_params = ethabi::decode(
             //    &[ethabi::ParamType::Array(Box::new(
             //        ethabi::ParamType::FixedBytes(32),
@@ -152,7 +156,8 @@ mod sample_oracle {
             //    }
             //}
             //let decoded_abi = ABI::decode(&abi256, true).or(Err(Error::FailedToDecodeParams))?;
-            let decoded_abi = ABI::decode_from_slice(parameter_abi_bytes, true).or(Err(Error::FailedToDecodeParams))?;
+            let decoded_abi = ABI::decode_from_slice(parameter_abi_bytes, true)
+                .or(Err(Error::FailedToDecodeParams))?;
 
             #[cfg(feature = "std")]
             println!("Got decoded params abi {:?}", decoded_abi);
@@ -168,11 +173,10 @@ mod sample_oracle {
             #[cfg(feature = "std")]
             println!("Got url suffix {:?}", url_suffix);
 
-            let ApiConfig { url, apikey } = self.apiconfig.as_ref().ok_or(Error::NotConfigurated)?;
+            let ApiConfig { url, apikey } =
+                self.apiconfig.as_ref().ok_or(Error::NotConfigurated)?;
 
-            let resp = http_get!(
-                url.to_owned() + &"?".to_string() + &url_suffix
-            );
+            let resp = http_get!(url.to_owned() + &"?".to_string() + &url_suffix);
 
             #[cfg(feature = "std")]
             println!("Got response {:?}", resp.body);
@@ -180,18 +184,20 @@ mod sample_oracle {
             // TODO check resp code
             let body = resp.body;
             // let root = serde_json::from_slice::<serde_json::Value>(&body)
-                //.or(Err(Error::FailedToDecodeResBody))?;
+            //.or(Err(Error::FailedToDecodeResBody))?;
 
             // TODO use macro to generate the code
             // 1. get path field
             // 2. generate the code
             let match_result = U256::from_little_endian(&body);
 
+            // offchain to onchain 1.0 string x 10000
+            // onchain to offchain / 10000
+            // U256
+
             // Apply the response to request
-            let payload = ethabi::encode(&[
-                ethabi::Token::Uint(*rid),
-                ethabi::Token::Uint(match_result),
-            ]);
+            let payload =
+                ethabi::encode(&[ethabi::Token::Uint(*rid), ethabi::Token::Uint(match_result)]);
 
             rollup
                 .tx_mut()
@@ -232,12 +238,12 @@ mod sample_oracle {
                 oracle: '0x8Bf50F8d0B62017c9B83341CB936797f6B6235dd'
             }
             */
-            let rpc = env::var("RPC").unwrap();
-            let anchor_addr: [u8; 20] =
-                hex::decode(env::var("ANCHOR_ADDR").expect("env not found"))
-                    .expect("hex decode failed")
-                    .try_into()
-                    .expect("invald length");
+            // let rpc = env::var("RPC").unwrap();
+            let rpc = "https://goerli.infura.io/v3/e5cbadfb7319409f981ee0231c256639".to_string();
+            let anchor_addr: [u8; 20] = hex::decode("0071B8CCeEc507ccc58656B50727eCfb46C6E3c5")
+                .expect("hex decode failed")
+                .try_into()
+                .expect("invald length");
             let anchor_addr: H160 = anchor_addr.into();
             (rpc, anchor_addr)
         }
@@ -250,21 +256,15 @@ mod sample_oracle {
 
             let mut sample_oracle = SampleOracle::default();
             sample_oracle.config(rpc, anchor_addr).unwrap();
+            sample_oracle
+                .set_apiconfig(
+                    "https://150.109.145.144:3301/saas3/web2/qatar2022/played".to_string(),
+                    None,
+                )
+                .unwrap();
 
             let res = sample_oracle.handle_req().unwrap();
             println!("res: {:#?}", res);
-        }
-
-        #[ink::test]
-        fn http_get_works() {
-            pink_extension_runtime::mock_ext::mock_all_ext();
-            let resp = http_get!(
-                "https://localhost:3301/saas3/web2/qatar2022/played?home=Qatar&guest=Ecuador"
-            );
-            assert_eq!(resp.status_code, 200);
-            println!("resp: {:#?}", resp.body);
-
-
         }
     }
 }
