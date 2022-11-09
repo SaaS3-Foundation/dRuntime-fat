@@ -104,12 +104,10 @@ mod sample_oracle {
             println!("handling req");
 
             let Config { rpc, anchor } = self.config.as_ref().ok_or(Error::NotConfigurated)?;
-            let mut rollup = QueuedRollupSession::new(rpc, anchor.into(), b"q", |_locks| {});
+            let mut rollup = QueuedRollupSession::new(rpc, anchor.into(), |_locks| {});
 
             // Declare write to global lock since it pops an element from the queue
-            rollup
-                .lock_write(GLOBAL_LOCK)
-                .expect("FIXME: failed to fetch lock");
+            rollup.lock_read(GLOBAL_LOCK).expect("FIXME: failed to fetch lock");
 
             // Read the first item in the queue (return if the queue is empty)
             let (raw_item, idx) = rollup
@@ -121,7 +119,10 @@ mod sample_oracle {
 
             let raw_item = match raw_item {
                 Some(v) => v,
-                _ => return Ok(None),
+                _ => {
+                    pink::debug!("No items in the queue. Returning.");
+                    return Ok(None);
+                }
             };
 
             #[cfg(feature = "std")]
@@ -139,22 +140,6 @@ mod sample_oracle {
                 _ => return Err(Error::FailedToDecodeStorage),
             };
 
-            //
-            //let tokens_of_params = ethabi::decode(
-            //    &[ethabi::ParamType::Array(Box::new(
-            //        ethabi::ParamType::FixedBytes(32),
-            //    ))],
-            //    &parameter_abi_bytes,
-            //);
-            //let mut abi256 = Vec::new();
-            //for param in tokens_of_params.unwrap().into_iter() {
-            //    if let ethabi::Token::FixedBytes(bytes) = param {
-            //        //let mut buf = [0u8; 32];
-            //        //buf.copy_from_slice(&bytes);
-            //        //let v = U256::from_big_endian(&buf);
-            //        abi256.push(U256::from_big_endian(&bytes));
-            //    }
-            //}
             //let decoded_abi = ABI::decode(&abi256, true).or(Err(Error::FailedToDecodeParams))?;
             let decoded_abi = ABI::decode_from_slice(parameter_abi_bytes, true)
                 .or(Err(Error::FailedToDecodeParams))?;
@@ -176,7 +161,13 @@ mod sample_oracle {
             let ApiConfig { url, apikey } =
                 self.apiconfig.as_ref().ok_or(Error::NotConfigurated)?;
 
-            let resp = http_get!(url.to_owned() + &"?".to_string() + &url_suffix);
+            let mut uri = url.to_owned() + "?" + &url_suffix;
+            uri = "http://150.109.145.144:3301/saas3/web2/qatar2022/played?home=VfB%20Stuttgart&guest=Hertha%20BSC".to_string();
+
+            #[cfg(feature = "std")]
+            println!("Got uri {:?}", uri);
+
+            let resp = http_get!(uri);
 
             #[cfg(feature = "std")]
             println!("Got response {:?}", resp.body);
@@ -240,7 +231,7 @@ mod sample_oracle {
             */
             // let rpc = env::var("RPC").unwrap();
             let rpc = "https://goerli.infura.io/v3/e5cbadfb7319409f981ee0231c256639".to_string();
-            let anchor_addr: [u8; 20] = hex::decode("0071B8CCeEc507ccc58656B50727eCfb46C6E3c5")
+            let anchor_addr: [u8; 20] = hex::decode("4238A55C8C36Eb521EcC6F58Aa4F0f331C0575E9")
                 .expect("hex decode failed")
                 .try_into()
                 .expect("invald length");
@@ -258,7 +249,7 @@ mod sample_oracle {
             sample_oracle.config(rpc, anchor_addr).unwrap();
             sample_oracle
                 .set_apiconfig(
-                    "https://150.109.145.144:3301/saas3/web2/qatar2022/played".to_string(),
+                    "http://150.109.145.144:3301/saas3/web2/qatar2022/played".to_string(),
                     None,
                 )
                 .unwrap();
