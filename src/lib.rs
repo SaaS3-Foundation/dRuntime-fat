@@ -66,6 +66,7 @@ mod sample_oracle {
         FailedToEstimateGas,
         FailedToDecodeParams,
         FailedToDecodeResBody,
+        Web2StatusError,
         MultiplyTimesOverflow,
         FailedToCreateRollupSession,
         FailedToFetchLock,
@@ -173,22 +174,23 @@ mod sample_oracle {
 
             let ApiConfig { url, apikey } =
                 self.apiconfig.as_ref().ok_or(Error::NotConfigurated)?;
-
-            let mut uri = url.to_owned() + "?" + &url_suffix;
-            uri = "http://150.109.145.144:3301/saas3/web2/qatar2022/played?home=VfB%20Stuttgart&guest=Hertha%20BSC".to_string();
-            //uri = "https://www.baidu.com".to_string();
+            
+            let uri = url.to_owned() + "?" + &url_suffix;
 
             #[cfg(feature = "std")]
             println!("Got uri {:?}", uri);
 
-            //let resp = http_get!(uri);
+            let resp = http_get!(uri);
+            if resp.status_code != 200 {
+                return Err(Error::Web2StatusError);
+            }
 
-            //#[cfg(feature = "std")]
-            //println!("Got response {:?}", resp.body);
+            #[cfg(feature = "std")]
+            println!("Got response {:?}", resp.body);
 
-            // TODO check resp code
-            // let body = resp.body;
-            // let root = serde_json::from_slice::<serde_json::Value>(&body)
+            let body = resp.body;
+
+            //let root = serde_json::from_slice::<serde_json::Value>(&body)
             //.or(Err(Error::FailedToDecodeResBody))?;
 
             // TODO use macro to generate the code
@@ -200,10 +202,12 @@ mod sample_oracle {
             // onchain to offchain / 10000
             // U256
 
+            //let answer = ethabi::encode(&[ethabi::Token::Uint(U256::from(111))]);
             // Apply the response to request
             let payload = ethabi::encode(&[
                 ethabi::Token::Uint(*rid),
-                ethabi::Token::Uint(U256::from(111)),
+                //ethabi::Token::Bytes(U256::from(111).encode()),
+                ethabi::Token::Bytes(body),
             ]);
 
             rollup
