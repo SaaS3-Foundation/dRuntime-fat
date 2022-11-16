@@ -67,6 +67,9 @@ mod sample_oracle {
         FailedToDecodeParams,
         FailedToDecodeResBody,
         MultiplyTimesOverflow,
+        FailedToCreateRollupSession,
+        FailedToFetchLock,
+        FailedToReadQueueHead,
     }
 
     type Result<T> = core::result::Result<T, Error>;
@@ -104,15 +107,25 @@ mod sample_oracle {
             println!("handling req");
 
             let Config { rpc, anchor } = self.config.as_ref().ok_or(Error::NotConfigurated)?;
-            let mut rollup = QueuedRollupSession::new(rpc, anchor.into(), |_locks| {});
+            let mut rollup =
+                QueuedRollupSession::new(rpc, anchor.into(), |_locks| {}).map_err(|e| {
+                    pink::warn!("Failed to create rollup session: {e:?}");
+                    Error::FailedToCreateRollupSession
+                })?;
 
             // Declare write to global lock since it pops an element from the queue
-            rollup.lock_read(GLOBAL_LOCK).expect("FIXME: failed to fetch lock");
+            rollup.lock_read(GLOBAL_LOCK).map_err(|e| {
+                pink::warn!("Failed to fetch lock: {e:?}");
+                Error::FailedToFetchLock
+            })?;
 
+            #[cfg(feature = "std")]
+            println!("reading raw data from qeueue ...");
             // Read the first item in the queue (return if the queue is empty)
-            let (raw_item, idx) = rollup
-                .queue_head()
-                .expect("FIXME: failed to read queue head");
+            let (raw_item, idx) = rollup.queue_head().map_err(|e| {
+                pink::warn!("Failed to read queue head: {e:?}");
+                Error::FailedToReadQueueHead
+            })?;
 
             #[cfg(feature = "std")]
             println!("raw_item: {:?}, idx: {:?}", raw_item, idx);
@@ -163,32 +176,35 @@ mod sample_oracle {
 
             let mut uri = url.to_owned() + "?" + &url_suffix;
             uri = "http://150.109.145.144:3301/saas3/web2/qatar2022/played?home=VfB%20Stuttgart&guest=Hertha%20BSC".to_string();
+            //uri = "https://www.baidu.com".to_string();
 
             #[cfg(feature = "std")]
             println!("Got uri {:?}", uri);
 
-            let resp = http_get!(uri);
+            //let resp = http_get!(uri);
 
-            #[cfg(feature = "std")]
-            println!("Got response {:?}", resp.body);
+            //#[cfg(feature = "std")]
+            //println!("Got response {:?}", resp.body);
 
             // TODO check resp code
-            let body = resp.body;
+            // let body = resp.body;
             // let root = serde_json::from_slice::<serde_json::Value>(&body)
             //.or(Err(Error::FailedToDecodeResBody))?;
 
             // TODO use macro to generate the code
             // 1. get path field
             // 2. generate the code
-            let match_result = U256::from_little_endian(&body);
+            //let match_result = U256::from_little_endian(&body);
 
             // offchain to onchain 1.0 string x 10000
             // onchain to offchain / 10000
             // U256
 
             // Apply the response to request
-            let payload =
-                ethabi::encode(&[ethabi::Token::Uint(*rid), ethabi::Token::Uint(match_result)]);
+            let payload = ethabi::encode(&[
+                ethabi::Token::Uint(*rid),
+                ethabi::Token::Uint(U256::from(111)),
+            ]);
 
             rollup
                 .tx_mut()
@@ -221,17 +237,14 @@ mod sample_oracle {
         use ink_lang as ink;
 
         fn consts() -> (String, H160) {
-            use std::env;
             dotenvy::dotenv().ok();
-            /*
-             Deployed {
-                anchor: '0xb3083F961C729f1007a6A1265Ae6b97dC2Cc16f2',
-                oracle: '0x8Bf50F8d0B62017c9B83341CB936797f6B6235dd'
-            }
-            */
             // let rpc = env::var("RPC").unwrap();
-            let rpc = "https://goerli.infura.io/v3/e5cbadfb7319409f981ee0231c256639".to_string();
-            let anchor_addr: [u8; 20] = hex::decode("4238A55C8C36Eb521EcC6F58Aa4F0f331C0575E9")
+            //let rpc = "https://goerli.infura.io/v3/e5cbadfb7319409f981ee0231c256639".to_string();
+            // let rpc = "https://moonbase-alpha.public.blastapi.io".to_string();
+            // let rpc = "https://rpc.api.moonbase.moonbeam.network".to_string();
+            let rpc = "https://moonbeam-alpha.api.onfinality.io/public".to_string();
+
+            let anchor_addr: [u8; 20] = hex::decode("524465490EeE31Ee3e451606f1cd45bCe81D30E7")
                 .expect("hex decode failed")
                 .try_into()
                 .expect("invald length");
@@ -241,6 +254,7 @@ mod sample_oracle {
 
         #[ink::test]
         fn default_works() {
+            let _ = env_logger::try_init();
             pink_extension_runtime::mock_ext::mock_all_ext();
 
             let (rpc, anchor_addr) = consts();

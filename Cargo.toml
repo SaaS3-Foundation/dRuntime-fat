@@ -1,6 +1,6 @@
 [package]
 name = "druntime"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["tianyi <tianyi@saas3.io>"]
 edition = "2021"
 
@@ -37,6 +37,7 @@ serde_json = { version = "1.0", default-features = false, features = ["alloc"] }
 dotenvy = "0.15"
 hex = "0.4"
 pink-extension-runtime = { version = "0.1", default-features = false }
+env_logger = "0.9.0"
 
 [lib]
 name = "druntime"
