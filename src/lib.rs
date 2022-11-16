@@ -103,6 +103,20 @@ mod sample_oracle {
             Ok(())
         }
 
+        #[ink(message)]
+        pub fn test_httpget(&self, url: String) -> Result<String> {
+            let resp = http_get!(url);
+            if resp.status_code != 200 {
+                return Err(Error::Web2StatusError);
+            }
+
+            #[cfg(feature = "std")]
+            println!("Got response {:?}", resp.body);
+
+            let body = resp.body;
+            Ok(String::from_utf8(body).unwrap())
+        }
+
         fn handle_req(&self) -> Result<Option<RollupResult>> {
             #[cfg(feature = "std")]
             println!("handling req");
@@ -244,9 +258,9 @@ mod sample_oracle {
             dotenvy::dotenv().ok();
             // let rpc = env::var("RPC").unwrap();
             //let rpc = "https://goerli.infura.io/v3/e5cbadfb7319409f981ee0231c256639".to_string();
-            // let rpc = "https://moonbase-alpha.public.blastapi.io".to_string();
+             let rpc = "https://moonbase-alpha.public.blastapi.io".to_string();
             // let rpc = "https://rpc.api.moonbase.moonbeam.network".to_string();
-            let rpc = "https://moonbeam-alpha.api.onfinality.io/public".to_string();
+            //let rpc = "https://moonbeam-alpha.api.onfinality.io/public".to_string();
 
             let anchor_addr: [u8; 20] = hex::decode("524465490EeE31Ee3e451606f1cd45bCe81D30E7")
                 .expect("hex decode failed")
@@ -267,7 +281,7 @@ mod sample_oracle {
             sample_oracle.config(rpc, anchor_addr).unwrap();
             sample_oracle
                 .set_apiconfig(
-                    "http://150.109.145.144:3301/saas3/web2/qatar2022/played".to_string(),
+                    "https://rpc.saas3.io:3301/saas3/web2/qatar2022/played".to_string(),
                     None,
                 )
                 .unwrap();
