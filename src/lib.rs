@@ -104,17 +104,24 @@ mod sample_oracle {
         }
 
         #[ink(message)]
-        pub fn test_httpget(&self, url: String) -> Result<String> {
+        pub fn test_httpget(&self, url: String) -> Result<u32> {
             let resp = http_get!(url);
             if resp.status_code != 200 {
                 return Err(Error::Web2StatusError);
             }
 
             #[cfg(feature = "std")]
-            println!("Got response {:?}", resp.body);
+            println!("Got response {:#?}", resp.body);
 
             let body = resp.body;
-            Ok(String::from_utf8(body).unwrap())
+
+            let mr_str = String::from_utf8(body);
+            let mr = mr_str.unwrap().parse::<u32>().unwrap();
+
+            //let expected = U256::from(mr).encode();
+            //let answer = ethabi::encode(&[ethabi::Token::Uint(U256::from(mr))]);
+            //assert_eq!(answer, expected);
+            Ok(mr)
         }
 
         fn handle_req(&self) -> Result<Option<RollupResult>> {
@@ -168,6 +175,9 @@ mod sample_oracle {
                 _ => return Err(Error::FailedToDecodeStorage),
             };
 
+            #[cfg(feature = "std")]
+            println!("ask_id {:?}", rid); 
+
             //let decoded_abi = ABI::decode(&abi256, true).or(Err(Error::FailedToDecodeParams))?;
             let decoded_abi = ABI::decode_from_slice(parameter_abi_bytes, true)
                 .or(Err(Error::FailedToDecodeParams))?;
@@ -203,6 +213,8 @@ mod sample_oracle {
             println!("Got response {:?}", resp.body);
 
             let body = resp.body;
+            let mr_str = String::from_utf8(body);
+            let mr = mr_str.unwrap().parse::<u32>().unwrap();
 
             //let root = serde_json::from_slice::<serde_json::Value>(&body)
             //.or(Err(Error::FailedToDecodeResBody))?;
@@ -216,12 +228,12 @@ mod sample_oracle {
             // onchain to offchain / 10000
             // U256
 
-            //let answer = ethabi::encode(&[ethabi::Token::Uint(U256::from(111))]);
+            let answer = ethabi::encode(&[ethabi::Token::Uint(U256::from(mr))]);
+
             // Apply the response to request
             let payload = ethabi::encode(&[
                 ethabi::Token::Uint(*rid),
-                //ethabi::Token::Bytes(U256::from(111).encode()),
-                ethabi::Token::Bytes(body),
+                ethabi::Token::Bytes(answer),
             ]);
 
             rollup
@@ -258,11 +270,12 @@ mod sample_oracle {
             dotenvy::dotenv().ok();
             // let rpc = env::var("RPC").unwrap();
             //let rpc = "https://goerli.infura.io/v3/e5cbadfb7319409f981ee0231c256639".to_string();
-             let rpc = "https://moonbase-alpha.public.blastapi.io".to_string();
+            // let rpc = "https://moonbase-alpha.public.blastapi.io".to_string();
             // let rpc = "https://rpc.api.moonbase.moonbeam.network".to_string();
             //let rpc = "https://moonbeam-alpha.api.onfinality.io/public".to_string();
+            let rpc = "https://polygon-mainnet.public.blastapi.io".to_string();
 
-            let anchor_addr: [u8; 20] = hex::decode("524465490EeE31Ee3e451606f1cd45bCe81D30E7")
+            let anchor_addr: [u8; 20] = hex::decode("63De844992279204a7132C936EF07c27A770D809")
                 .expect("hex decode failed")
                 .try_into()
                 .expect("invald length");
@@ -286,6 +299,7 @@ mod sample_oracle {
                 )
                 .unwrap();
 
+            //sample_oracle.test_httpget("https://rpc.saas3.io:3301/saas3/web2/qatar2022/played?home=1. FC Union Berlin&guest=FC Augsburg".to_string()).unwrap();
             let res = sample_oracle.handle_req().unwrap();
             println!("res: {:#?}", res);
         }
