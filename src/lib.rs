@@ -66,11 +66,13 @@ mod sample_oracle {
         FailedToEstimateGas,
         FailedToDecodeParams,
         FailedToDecodeResBody,
+        FailedToDecodeByPath,
         Web2StatusError,
         MultiplyTimesOverflow,
         FailedToCreateRollupSession,
         FailedToFetchLock,
         FailedToReadQueueHead,
+        FailedToDecodeNumberFromJson,
     }
 
     type Result<T> = core::result::Result<T, Error>;
@@ -104,7 +106,7 @@ mod sample_oracle {
         }
 
         #[ink(message)]
-        pub fn test_httpget(&self, url: String) -> Result<u32> {
+        pub fn test_httpget(&self, url: String) -> Result<()> {
             let resp = http_get!(url);
             if resp.status_code != 200 {
                 return Err(Error::Web2StatusError);
@@ -115,13 +117,77 @@ mod sample_oracle {
 
             let body = resp.body;
 
-            let mr_str = String::from_utf8(body);
-            let mr = mr_str.unwrap().parse::<u32>().unwrap();
+            //let mr_str = String::from_utf8(body);
+            //let mr = mr_str.unwrap().parse::<u32>().unwrap();
 
-            //let expected = U256::from(mr).encode();
-            //let answer = ethabi::encode(&[ethabi::Token::Uint(U256::from(mr))]);
-            //assert_eq!(answer, expected);
-            Ok(mr)
+            let root = serde_json::from_slice::<serde_json::Value>(&body)
+                .or(Err(Error::FailedToDecodeResBody));
+
+            #[cfg(feature = "std")]
+            println!("Got response {:#?}", root);
+
+            if root.is_err() {
+                return Err(root.err().unwrap());
+            }
+            let _path = "ethereum.usd";
+            let v = _path.split(".").fold(root, |v, p| {
+                #[cfg(feature = "std")]
+                println!("p: {}", p);
+
+                let v = v?.get(p).ok_or(Error::FailedToDecodeByPath).cloned();
+                v
+            });
+            if v.is_err() {
+                return Err(v.err().unwrap());
+            }
+            let v = v.unwrap();
+
+            #[cfg(feature = "std")]
+            println!("Decoded data {:#?}", v);
+
+            let _type = "number";
+            match v {
+                serde_json::Value::Number(n) => {
+                    let s = n.to_string();
+                    let _times = 100;
+                    let x = s.find(".");
+                    if x == None {
+                        // no decimal point
+                    } else {
+                        let y = s.len() - x.unwrap() - 1;
+
+                        // check if _times is set or not
+                        if 10_u32.pow(y as u32) > _times {
+                            return Err(Error::MultiplyTimesOverflow);
+                        }
+
+                        let mut s = s.to_owned();
+                        s.retain(|c| c != '.');
+                        // alread multiply by 10^y
+                        let mut s = s.parse::<u64>().unwrap();
+                        s = s * (_times / 10_u32.pow(y as u32)) as u64;
+
+                        #[cfg(feature = "std")]
+                        println!("s: {}", s);
+                    }
+                }
+                serde_json::Value::String(s) => {
+                    #[cfg(feature = "std")]
+                    println!("String: {}", s);
+                }
+                _ => {
+                    #[cfg(feature = "std")]
+                    println!("Not a number");
+                }
+            }
+            // TODO use macro to generate the code
+            // 1. get path field
+            // 2. generate the code
+
+            // offchain to onchain 1.0 string x 10000
+            // onchain to offchain / 10000
+            // U256
+            Ok(())
         }
 
         fn handle_req(&self) -> Result<Option<RollupResult>> {
@@ -176,9 +242,8 @@ mod sample_oracle {
             };
 
             #[cfg(feature = "std")]
-            println!("ask_id {:?}", rid); 
+            println!("ask_id {:?}", rid);
 
-            //let decoded_abi = ABI::decode(&abi256, true).or(Err(Error::FailedToDecodeParams))?;
             let decoded_abi = ABI::decode_from_slice(parameter_abi_bytes, true)
                 .or(Err(Error::FailedToDecodeParams))?;
 
@@ -198,7 +263,7 @@ mod sample_oracle {
 
             let ApiConfig { url, apikey } =
                 self.apiconfig.as_ref().ok_or(Error::NotConfigurated)?;
-            
+
             let uri = url.to_owned() + "?" + &url_suffix;
 
             #[cfg(feature = "std")]
@@ -216,25 +281,11 @@ mod sample_oracle {
             let mr_str = String::from_utf8(body);
             let mr = mr_str.unwrap().parse::<u32>().unwrap();
 
-            //let root = serde_json::from_slice::<serde_json::Value>(&body)
-            //.or(Err(Error::FailedToDecodeResBody))?;
-
-            // TODO use macro to generate the code
-            // 1. get path field
-            // 2. generate the code
-            //let match_result = U256::from_little_endian(&body);
-
-            // offchain to onchain 1.0 string x 10000
-            // onchain to offchain / 10000
-            // U256
-
             let answer = ethabi::encode(&[ethabi::Token::Uint(U256::from(mr))]);
 
             // Apply the response to request
-            let payload = ethabi::encode(&[
-                ethabi::Token::Uint(*rid),
-                ethabi::Token::Bytes(answer),
-            ]);
+            let payload =
+                ethabi::encode(&[ethabi::Token::Uint(*rid), ethabi::Token::Bytes(answer)]);
 
             rollup
                 .tx_mut()
@@ -300,8 +351,14 @@ mod sample_oracle {
                 .unwrap();
 
             //sample_oracle.test_httpget("https://rpc.saas3.io:3301/saas3/web2/qatar2022/played?home=1. FC Union Berlin&guest=FC Augsburg".to_string()).unwrap();
-            let res = sample_oracle.handle_req().unwrap();
-            println!("res: {:#?}", res);
+            sample_oracle
+                .test_httpget(
+                    "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd"
+                        .to_string(),
+                )
+                .unwrap();
+            //let res = sample_oracle.handle_req().unwrap();
+            //println!("res: {:#?}", res);
         }
     }
 }
