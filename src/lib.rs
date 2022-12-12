@@ -4,10 +4,11 @@ extern crate alloc;
 
 use ink_lang as ink;
 
-pub use crate::sample_oracle::*;
-
+/// Fat contract version SaaS3 decentralized oracle runtime
+/// `config`  should be called after the deployment of the contract
+/// With phala TEE environment, the oracle data like API token can be safely stored in the contract
 #[ink::contract(env = pink_extension::PinkEnvironment)]
-mod sample_oracle {
+mod druntime {
     use alloc::{borrow::ToOwned, string::String, string::ToString, vec::Vec};
     use ink_storage::traits::{PackedLayout, SpreadLayout};
     use phat_offchain_rollup::{
@@ -25,14 +26,12 @@ mod sample_oracle {
     use primitive_types::U256;
     use serde_json;
 
-    /// Defines the storage of your contract.
-    /// Add new fields to the below struct in order
-    /// to add new static storage fields to your contract.
+    /// The the storage of druntime
     #[ink(storage)]
-    pub struct SampleOracle {
+    pub struct Oracle {
         owner: AccountId,
+        /// oracle config, is none before config
         config: Option<Config>,
-        apiconfig: Option<ApiConfig>,
     }
 
     #[derive(Encode, Decode, Debug, PackedLayout, SpreadLayout)]
@@ -43,14 +42,6 @@ mod sample_oracle {
     struct Config {
         rpc: String,
         anchor: [u8; 20],
-    }
-
-    #[derive(Encode, Decode, Debug, PackedLayout, SpreadLayout)]
-    #[cfg_attr(
-        feature = "std",
-        derive(scale_info::TypeInfo, ink_storage::traits::StorageLayout)
-    )]
-    struct ApiConfig {
         url: String,
         apikey: Option<String>,
     }
@@ -86,31 +77,53 @@ mod sample_oracle {
 
     type Result<T> = core::result::Result<T, Error>;
 
-    impl SampleOracle {
+    impl Oracle {
         #[ink(constructor)]
         pub fn default() -> Self {
             Self {
                 owner: Self::env().caller(),
                 config: None,
-                apiconfig: None,
             }
         }
 
-        /// Configures the rollup target
+        /// Configures the oracle
         #[ink(message)]
-        pub fn config(&mut self, rpc: String, anchor: H160) -> Result<()> {
+        pub fn config(
+            &mut self,
+            // saas3 protocol target chain rpc
+            target_chain_rpc: Option<String>,
+            // phala anchor contract address
+            anchor_contract_addr: Option<H160>,
+            // web2 api url prefix
+            web2_api_url_prefix: Option<String>,
+            // web2 api key
+            api_key: Option<String>,
+        ) -> Result<()> {
             self.ensure_owner()?;
-            self.config = Some(Config {
-                rpc,
-                anchor: anchor.into(),
-            });
-            Ok(())
-        }
-
-        #[ink(message)]
-        pub fn set_apiconfig(&mut self, url: String, apikey: Option<String>) -> Result<()> {
-            self.ensure_owner()?;
-            self.apiconfig = Some(ApiConfig { url, apikey });
+            if self.config.is_none() {
+                if target_chain_rpc.is_none() || anchor_contract_addr.is_none() {
+                    return Err(Error::NotConfigurated);
+                }
+                self.config = Some(Config {
+                    rpc: target_chain_rpc.unwrap(),
+                    anchor: anchor_contract_addr.unwrap().into(),
+                    url: web2_api_url_prefix.unwrap_or_default(),
+                    apikey: api_key,
+                });
+            } else {
+                if let Some(rpc) = target_chain_rpc {
+                    self.config.as_mut().unwrap().rpc = rpc;
+                }
+                if let Some(anchor) = anchor_contract_addr {
+                    self.config.as_mut().unwrap().anchor = anchor.into();
+                }
+                if let Some(url) = web2_api_url_prefix {
+                    self.config.as_mut().unwrap().url = url;
+                }
+                if let Some(apikey) = api_key {
+                    self.config.as_mut().unwrap().apikey = Some(apikey);
+                }
+            }
             Ok(())
         }
 
@@ -238,7 +251,12 @@ mod sample_oracle {
             #[cfg(feature = "std")]
             println!("handling req");
 
-            let Config { rpc, anchor } = self.config.as_ref().ok_or(Error::NotConfigurated)?;
+            let Config {
+                rpc,
+                anchor,
+                url,
+                apikey: _,
+            } = self.config.as_ref().ok_or(Error::NotConfigurated)?;
             let mut rollup =
                 QueuedRollupSession::new(rpc, anchor.into(), |_locks| {}).map_err(|e| {
                     pink::warn!("Failed to create rollup session: {e:?}");
@@ -335,9 +353,6 @@ mod sample_oracle {
             #[cfg(feature = "std")]
             println!("Got url suffix {:?}", url_suffix);
 
-            let ApiConfig { url, apikey: _ } =
-                self.apiconfig.as_ref().ok_or(Error::NotConfigurated)?;
-
             let uri = url.to_owned() + "?" + &url_suffix;
 
             #[cfg(feature = "std")]
@@ -395,7 +410,9 @@ mod sample_oracle {
         }
     }
 
-    impl RollupHandler for SampleOracle {
+    impl RollupHandler for Oracle {
+        /// The anchor contract message handler
+        /// It should be called by a scheduled task
         #[ink(message)]
         fn handle_rollup(&self) -> core::result::Result<Option<RollupResult>, Vec<u8>> {
             self.handle_req().map_err(|e| Encode::encode(&e))
@@ -412,7 +429,7 @@ mod sample_oracle {
             let _ = env_logger::try_init();
             pink_extension_runtime::mock_ext::mock_all_ext();
 
-            let oracle = SampleOracle::default();
+            let oracle = Oracle::default();
             let root = serde_json::from_str::<serde_json::Value>(
                 r#"
                 {
@@ -434,7 +451,7 @@ mod sample_oracle {
             let _ = env_logger::try_init();
             pink_extension_runtime::mock_ext::mock_all_ext();
 
-            let oracle = SampleOracle::default();
+            let oracle = Oracle::default();
             let root = serde_json::from_str::<serde_json::Value>(
                 r#"
                 {
@@ -459,7 +476,7 @@ mod sample_oracle {
             let _ = env_logger::try_init();
             pink_extension_runtime::mock_ext::mock_all_ext();
 
-            let oracle = SampleOracle::default();
+            let oracle = Oracle::default();
             let v = oracle
                 .encode_from_string_to_256("1.23".to_string(), false, 100)
                 .unwrap();
@@ -471,7 +488,7 @@ mod sample_oracle {
             let _ = env_logger::try_init();
             pink_extension_runtime::mock_ext::mock_all_ext();
 
-            let oracle = SampleOracle::default();
+            let oracle = Oracle::default();
             let v = oracle
                 .encode_from_string_to_256("-1.23".to_string(), true, 100)
                 .unwrap();
@@ -483,7 +500,7 @@ mod sample_oracle {
             let _ = env_logger::try_init();
             pink_extension_runtime::mock_ext::mock_all_ext();
 
-            let oracle = SampleOracle::default();
+            let oracle = Oracle::default();
             let v = oracle
                 .encode_from_string_to_256("-123".to_string(), true, 100)
                 .unwrap();
@@ -495,7 +512,7 @@ mod sample_oracle {
             let _ = env_logger::try_init();
             pink_extension_runtime::mock_ext::mock_all_ext();
 
-            let oracle = SampleOracle::default();
+            let oracle = Oracle::default();
             let v = oracle.encode_from_string_to_256("1.23".to_string(), false, 10);
             assert_eq!(v.err().unwrap(), Error::TimesTooSmall);
         }
@@ -505,7 +522,7 @@ mod sample_oracle {
             let _ = env_logger::try_init();
             pink_extension_runtime::mock_ext::mock_all_ext();
 
-            let oracle = SampleOracle::default();
+            let oracle = Oracle::default();
             let v = oracle.encode_from_string_to_256("123".to_string(), false, 10);
             assert_eq!(v.unwrap(), ethabi::Token::Uint(123.into()));
         }
@@ -515,7 +532,7 @@ mod sample_oracle {
             let _ = env_logger::try_init();
             pink_extension_runtime::mock_ext::mock_all_ext();
 
-            let oracle = SampleOracle::default();
+            let oracle = Oracle::default();
             let v = serde_json::json!({ "city": "saas3", "street": "10 Downing Street" });
             let v = oracle.read_by_path(v, "city").unwrap();
             let t = oracle.encode_answer(v, "string32", 100).unwrap();
@@ -530,7 +547,7 @@ mod sample_oracle {
             let _ = env_logger::try_init();
             pink_extension_runtime::mock_ext::mock_all_ext();
 
-            let oracle = SampleOracle::default();
+            let oracle = Oracle::default();
             let v = serde_json::json!({ "city": 1.32, "street": "10 Downing Street" });
             let v = oracle.read_by_path(v, "city").unwrap();
             let t = oracle.encode_answer(v, "uint256", 1000).unwrap();
@@ -564,16 +581,16 @@ mod sample_oracle {
 
             let (rpc, anchor_addr) = consts();
 
-            let mut sample_oracle = SampleOracle::default();
-            sample_oracle.config(rpc, anchor_addr).unwrap();
-            sample_oracle
-                .set_apiconfig(
-                    "https://rpc.saas3.io:3301/saas3/web2/qatar2022/played".to_string(),
+            let mut oracle = Oracle::default();
+            oracle
+                .config(
+                    Some(rpc),
+                    Some(anchor_addr),
+                    Some("https://rpc.saas3.io:3301/saas3/web2/qatar2022/played".to_string()),
                     None,
                 )
                 .unwrap();
-
-            let res = sample_oracle.handle_req().unwrap();
+            let res = oracle.handle_req().unwrap();
             println!("res: {:#?}", res);
         }
     }
