@@ -7,5 +7,7 @@ With phala TEE environment, the oracle data like API token can be safely stored 
 
 ## Build
 ```
- cargo +nightly contract build --release
+cd src/js && yarn run build
+cd -
+cargo +nightly contract build --release
 ```
