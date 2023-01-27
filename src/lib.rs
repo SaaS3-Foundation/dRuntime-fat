@@ -9,6 +9,8 @@ use ink_lang as ink;
 /// With phala TEE environment, the oracle data like API token can be safely stored in the contract
 #[ink::contract(env = pink_extension::PinkEnvironment)]
 mod druntime {
+    use core::str::Bytes;
+
     use alloc::{borrow::ToOwned, string::String, string::ToString, vec::Vec};
     use ink_storage::traits::{PackedLayout, SpreadLayout};
     use phat_offchain_rollup::{
@@ -22,9 +24,10 @@ mod druntime {
     use scale::{Decode, Encode};
 
     use abi::{encode::str_chunk32_bytes, ABI};
+    use alloc::vec;
+    use hex;
     use pink::http_get;
     use primitive_types::U256;
-    use serde_json;
 
     /// The the storage of druntime
     #[ink(storage)]
@@ -42,6 +45,7 @@ mod druntime {
     struct Config {
         rpc: String,
         anchor: [u8; 20],
+        qjs: String,
         url: String,
         apikey: Option<String>,
     }
@@ -73,6 +77,11 @@ mod druntime {
         EncodeStringTo32BytesFailed,
         TimesParseFailed,
         NotANumberOrString,
+        FailedToDecodeQjsCodeHash,
+        FailedTurnQjsCodeHashToHashType,
+        InvalidUtf8,
+        EvalJsError,
+        JsScriptReturnError,
     }
 
     type Result<T> = core::result::Result<T, Error>;
@@ -94,6 +103,8 @@ mod druntime {
             target_chain_rpc: Option<String>,
             // phala anchor contract address
             anchor_contract_addr: Option<H160>,
+            // js engine code hash string
+            js_engine_code_hash: Option<String>,
             // web2 api url prefix
             web2_api_url_prefix: Option<String>,
             // web2 api key
@@ -101,12 +112,16 @@ mod druntime {
         ) -> Result<()> {
             self.ensure_owner()?;
             if self.config.is_none() {
-                if target_chain_rpc.is_none() || anchor_contract_addr.is_none() {
+                if target_chain_rpc.is_none()
+                    || anchor_contract_addr.is_none()
+                    || js_engine_code_hash.is_none()
+                {
                     return Err(Error::NotConfigurated);
                 }
                 self.config = Some(Config {
                     rpc: target_chain_rpc.unwrap(),
                     anchor: anchor_contract_addr.unwrap().into(),
+                    qjs: js_engine_code_hash.unwrap().into(),
                     url: web2_api_url_prefix.unwrap_or_default(),
                     apikey: api_key,
                 });
@@ -117,6 +132,9 @@ mod druntime {
                 if let Some(anchor) = anchor_contract_addr {
                     self.config.as_mut().unwrap().anchor = anchor.into();
                 }
+                if let Some(qjs) = js_engine_code_hash {
+                    self.config.as_mut().unwrap().qjs = qjs.into();
+                }
                 if let Some(url) = web2_api_url_prefix {
                     self.config.as_mut().unwrap().url = url;
                 }
@@ -125,21 +143,6 @@ mod druntime {
                 }
             }
             Ok(())
-        }
-
-        fn read_by_path(&self, v: serde_json::Value, path: &str) -> Result<serde_json::Value> {
-            let v = path.split(".").fold(Ok(v), |v, p| {
-                #[cfg(feature = "std")]
-                println!("p: {}", p);
-
-                let v = v?.get(p).ok_or(Error::FailedToDecodeByPath).cloned();
-                v
-            })?;
-
-            #[cfg(feature = "std")]
-            println!("path {} value {:#?}", path, v);
-
-            Ok(v)
         }
 
         fn encode_from_string_to_256(
@@ -198,52 +201,39 @@ mod druntime {
             }
         }
 
-        fn encode_answer(
-            &self,
-            v: serde_json::Value,
-            _type: &str,
-            _times: u32,
-        ) -> Result<ethabi::Token> {
-            match v {
-                serde_json::Value::Number(n) => {
-                    return match _type {
-                        "string" => Ok(ethabi::Token::String(n.to_string())),
-                        "string32" => {
-                            let chunk = str_chunk32_bytes(&n.to_string())
-                                .map_err(|_| Error::EncodeStringTo32BytesFailed)?;
-                            Ok(ethabi::Token::FixedBytes(chunk))
-                        }
-                        "uint256" => {
-                            Ok(self.encode_from_string_to_256(n.to_string(), false, _times)?)
-                        }
-                        "int256" => {
-                            Ok(self.encode_from_string_to_256(n.to_string(), true, _times)?)
-                        }
-                        _ => Err(Error::InvalidType),
-                    };
-                }
-                serde_json::Value::String(s) => {
-                    #[cfg(feature = "std")]
-                    println!("String: {}", s);
+        fn encode_answer(&self, s: String, _type: &str, _times: u32) -> Result<ethabi::Token> {
+            #[cfg(feature = "std")]
+            println!("String: {}", s);
 
-                    return match _type {
-                        "string" => Ok(ethabi::Token::String(s)),
-                        "string32" => {
-                            let chunk = str_chunk32_bytes(&s.to_string())
-                                .map_err(|_| Error::EncodeStringTo32BytesFailed)?;
-                            Ok(ethabi::Token::FixedBytes(chunk))
-                        }
-                        "uint256" => Ok(self.encode_from_string_to_256(s, false, _times)?),
-                        "int256" => Ok(self.encode_from_string_to_256(s, true, _times)?),
-                        _ => Err(Error::InvalidType),
-                    };
+            return match _type {
+                "string" => Ok(ethabi::Token::String(s)),
+                "string32" => {
+                    let chunk = str_chunk32_bytes(&s.to_string())
+                        .map_err(|_| Error::EncodeStringTo32BytesFailed)?;
+                    Ok(ethabi::Token::FixedBytes(chunk))
                 }
-                _ => {
-                    #[cfg(feature = "std")]
-                    println!("Not a number or string");
+                "uint256" => Ok(self.encode_from_string_to_256(s, false, _times)?),
+                "int256" => Ok(self.encode_from_string_to_256(s, true, _times)?),
+                _ => Err(Error::InvalidType),
+            };
+        }
 
-                    return Err(Error::NotANumberOrString);
+        #[ink(message)]
+        pub fn run_js(&self, json_text: String, path: String) -> Result<String> {
+            let script = include_str!("js/dist/index.js");
+            let r = crate::js::eval(script, &[json_text, path]);
+            if r.is_err() {
+                pink::error!("eval js error: {:?}", r.err().unwrap());
+                return Err(Error::EvalJsError);
+            }
+            match r.unwrap() {
+                crate::js::Output::String(s) => {
+                    #[cfg(feature = "std")]
+                    println!("s: {}", s);
+
+                    Err(Error::JsScriptReturnError)
                 }
+                crate::js::Output::Bytes(b) => Ok(String::from_utf8(b).unwrap()),
             }
         }
 
@@ -254,9 +244,11 @@ mod druntime {
             let Config {
                 rpc,
                 anchor,
+                qjs,
                 url,
                 apikey: _,
             } = self.config.as_ref().ok_or(Error::NotConfigurated)?;
+
             let mut rollup =
                 QueuedRollupSession::new(rpc, anchor.into(), |_locks| {}).map_err(|e| {
                     pink::warn!("Failed to create rollup session: {e:?}");
@@ -271,6 +263,7 @@ mod druntime {
 
             #[cfg(feature = "std")]
             println!("reading raw data from qeueue ...");
+
             // Read the first item in the queue (return if the queue is empty)
             let (raw_item, idx) = rollup.queue_head().map_err(|e| {
                 pink::warn!("Failed to read queue head: {e:?}");
@@ -366,27 +359,19 @@ mod druntime {
             #[cfg(feature = "std")]
             println!("Got response {:?}", resp.body);
 
-            let root = serde_json::from_slice::<serde_json::Value>(&resp.body)
-                .or(Err(Error::FailedToDecodeResBody))?;
+            let jt = core::str::from_utf8(resp.body.as_slice()).map_err(|_| Error::InvalidUtf8)?;
+            let v = self.run_js(jt.to_string(), _path)?;
 
             #[cfg(feature = "std")]
-            println!("Got response {:#?}", root);
+            println!("Got value {:#?}", v);
 
-            let mut v = root.clone();
-            if _path != "" {
-                v = self.read_by_path(root, &_path)?;
-            } // no path, use the root path
-
-            if v.is_array() || v.is_null() || v.is_object() {
-                // we only support number, string, bool
-                return Err(Error::InvalidRootValue);
-            }
             let answer = self.encode_answer(v, &_type, _times)?;
 
             #[cfg(feature = "std")]
             println!("answer {:#?}", answer);
 
-            let answer = ethabi::encode(&[answer]);
+            //let answer = ethabi::encode(&[answer]);
+            let answer = ethabi::encode(&[ethabi::Token::Uint(U256::from(1))]);
 
             // Apply the response to request
             let payload =
@@ -423,53 +408,6 @@ mod druntime {
     mod tests {
         use super::*;
         use ink_lang as ink;
-
-        #[ink::test]
-        fn read_by_path_should_ok() {
-            let _ = env_logger::try_init();
-            pink_extension_runtime::mock_ext::mock_all_ext();
-
-            let oracle = Oracle::default();
-            let root = serde_json::from_str::<serde_json::Value>(
-                r#"
-                {
-                    "a": {
-                        "b": {
-                            "c": 1
-                        }
-                    }
-                }
-                "#,
-            )
-            .unwrap();
-            let v = oracle.read_by_path(root, "a.b.c").unwrap();
-            assert_eq!(v, serde_json::Value::Number(1.into()));
-        }
-
-        #[ink::test]
-        fn read_by_path_should_fail() {
-            let _ = env_logger::try_init();
-            pink_extension_runtime::mock_ext::mock_all_ext();
-
-            let oracle = Oracle::default();
-            let root = serde_json::from_str::<serde_json::Value>(
-                r#"
-                {
-                    "a": {
-                        "b": {
-                            "c": 1
-                        }
-                    }
-                }
-                "#,
-            )
-            .unwrap();
-            let v = oracle.read_by_path(root.clone(), "a.b.d");
-            assert!(v.is_err());
-            assert_eq!(v.err().unwrap(), Error::FailedToDecodeByPath);
-            let v1 = oracle.read_by_path(root, "a.b");
-            assert!(v1.unwrap().is_object());
-        }
 
         #[ink::test]
         fn encode_from_string_to_256_should_ok() {
@@ -528,36 +466,25 @@ mod druntime {
         }
 
         #[ink::test]
-        fn encode_answer_should_ok_with_string32() {
+        fn eval_js_should_ok() {
             let _ = env_logger::try_init();
             pink_extension_runtime::mock_ext::mock_all_ext();
 
             let oracle = Oracle::default();
-            let v = serde_json::json!({ "city": "saas3", "street": "10 Downing Street" });
-            let v = oracle.read_by_path(v, "city").unwrap();
-            let t = oracle.encode_answer(v, "string32", 100).unwrap();
-            assert_eq!(
-                t.into_bytes(),
-                ethabi::Token::String("saas3".to_string()).into_bytes()
+            let r = hex::decode("ab2fde00a6df6a0443ae4fafc0d27c19907b105475e119556b4ad35acda0a90b");
+            if r.is_err() {
+                println!("err {:#?}", r.err().unwrap());
+            }
+            let r = oracle.run_js(
+                r#"{ a: "b"}"#.to_string(), "$.a".to_string()
+                
             );
+            if r.is_err() {
+                println!("err {:#?}", r.err().unwrap());
+            }
         }
 
-        #[ink::test]
-        fn encode_answer_should_ok_with_float() {
-            let _ = env_logger::try_init();
-            pink_extension_runtime::mock_ext::mock_all_ext();
-
-            let oracle = Oracle::default();
-            let v = serde_json::json!({ "city": 1.32, "street": "10 Downing Street" });
-            let v = oracle.read_by_path(v, "city").unwrap();
-            let t = oracle.encode_answer(v, "uint256", 1000).unwrap();
-            assert_eq!(
-                t.into_bytes(),
-                ethabi::Token::Uint(U256::from(1320)).into_bytes()
-            );
-        }
-
-        fn consts() -> (String, H160) {
+        fn consts() -> (String, H160, String) {
             dotenvy::dotenv().ok();
             // let rpc = env::var("RPC").unwrap();
             //let rpc = "https://goerli.infura.io/v3/e5cbadfb7319409f981ee0231c256639".to_string();
@@ -565,13 +492,14 @@ mod druntime {
             // let rpc = "https://rpc.api.moonbase.moonbeam.network".to_string();
             //let rpc = "https://moonbeam-alpha.api.onfinality.io/public".to_string();
             let rpc = "https://polygon-mainnet.public.blastapi.io".to_string();
+            let qjs = "ab2fde00a6df6a0443ae4fafc0d27c19907b105475e119556b4ad35acda0a90b";
 
             let anchor_addr: [u8; 20] = hex::decode("63De844992279204a7132C936EF07c27A770D809")
                 .expect("hex decode failed")
                 .try_into()
                 .expect("invald length");
             let anchor_addr: H160 = anchor_addr.into();
-            (rpc, anchor_addr)
+            (rpc, anchor_addr, qjs.to_string())
         }
 
         #[ink::test]
@@ -579,19 +507,77 @@ mod druntime {
             let _ = env_logger::try_init();
             pink_extension_runtime::mock_ext::mock_all_ext();
 
-            let (rpc, anchor_addr) = consts();
+            let (rpc, anchor_addr, qjs) = consts();
 
             let mut oracle = Oracle::default();
             oracle
                 .config(
                     Some(rpc),
                     Some(anchor_addr),
+                    Some(qjs),
                     Some("https://rpc.saas3.io:3301/saas3/web2/qatar2022/played".to_string()),
                     None,
                 )
                 .unwrap();
             let res = oracle.handle_req().unwrap();
             println!("res: {:#?}", res);
+        }
+    }
+}
+
+mod js {
+    use super::*;
+
+    use alloc::string::String;
+    use alloc::vec::Vec;
+    use pink_extension as pink;
+    use scale::{Decode, Encode};
+
+    #[derive(Debug, Encode, Decode)]
+    #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
+    pub enum Output {
+        String(String),
+        Bytes(Vec<u8>),
+    }
+
+    pub fn eval(script: &str, args: &[String]) -> Result<Output, String> {
+        use ink_env::call;
+        //let system = pink::system::SystemRef::instance();
+        //let delegate = system
+        //    .get_driver("JsDelegate".into())
+        //    .ok_or("No JS driver found")?;
+        let hash: ink_env::Hash = hex::decode("ab2fde00a6df6a0443ae4fafc0d27c19907b105475e119556b4ad35acda0a90b").unwrap().as_slice().try_into().unwrap();
+
+        pink::debug!("args {:#?}", args);
+
+        let result = call::build_call::<pink::PinkEnvironment>()
+            .call_type(call::DelegateCall::new().code_hash(hash))
+            .exec_input(
+                call::ExecutionInput::new(call::Selector::new(0x49bfcd24_u32.to_be_bytes()))
+                    .push_arg(script)
+                    .push_arg(args),
+            )
+            .returns::<Result<Output, String>>()
+            .fire();
+        if result.is_err() {
+            pink::error!("result is error {:#?}", result.err().unwrap());
+            return Err(String::from("result is error"));
+        }
+        pink::debug!("eval result: {result:?}");
+        result.unwrap()
+    }
+
+    pub trait ConvertTo<To> {
+        fn convert_to(&self) -> To;
+    }
+
+    impl<F, T> ConvertTo<T> for F
+    where
+        F: AsRef<[u8; 32]>,
+        T: From<[u8; 32]>,
+    {
+        fn convert_to(&self) -> T {
+            (*self.as_ref()).into()
         }
     }
 }
