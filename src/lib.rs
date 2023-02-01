@@ -220,10 +220,26 @@ mod druntime {
 
         #[ink(message)]
         pub fn run_js(&self, json_text: String, path: String) -> Result<String> {
+            let uri = "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd";
+
+            #[cfg(feature = "std")]
+            println!("Got uri {:?}", uri);
+
+            let resp = http_get!(uri);
+            if resp.status_code != 200 {
+                return Err(Error::Web2StatusError);
+            }
+
+            #[cfg(feature = "std")]
+            println!("Got response {:?}", resp.body);
+
+            let jt = core::str::from_utf8(resp.body.as_slice()).map_err(|_| Error::InvalidUtf8)?;
+            //let v = self.run_js(jt.to_string(), _path)?;
             let script = include_str!("js/dist/index.js");
-            let r = crate::js::eval(script, &[json_text, path]);
+            // let r = crate::js::eval(script, &[json_text.clone(), path.clone()]);
+            let r = crate::js::eval(script, &[jt.to_string(), path.clone()]);
             if r.is_err() {
-                pink::error!("eval js error: {:?}", r.err().unwrap());
+                pink::error!("eval js error: {:?}, json_text: {:?}, path: {:?}", r.err().unwrap(), json_text, path);
                 return Err(Error::EvalJsError);
             }
             match r.unwrap() {
@@ -475,10 +491,7 @@ mod druntime {
             if r.is_err() {
                 println!("err {:#?}", r.err().unwrap());
             }
-            let r = oracle.run_js(
-                r#"{ a: "b"}"#.to_string(), "$.a".to_string()
-                
-            );
+            let r = oracle.run_js(r#"{ a: "b"}"#.to_string(), "$.a".to_string());
             if r.is_err() {
                 println!("err {:#?}", r.err().unwrap());
             }
@@ -546,7 +559,12 @@ mod js {
         //let delegate = system
         //    .get_driver("JsDelegate".into())
         //    .ok_or("No JS driver found")?;
-        let hash: ink_env::Hash = hex::decode("ab2fde00a6df6a0443ae4fafc0d27c19907b105475e119556b4ad35acda0a90b").unwrap().as_slice().try_into().unwrap();
+        let hash: ink_env::Hash =
+            hex::decode("ab2fde00a6df6a0443ae4fafc0d27c19907b105475e119556b4ad35acda0a90b")
+                .unwrap()
+                .as_slice()
+                .try_into()
+                .unwrap();
 
         pink::debug!("args {:#?}", args);
 
