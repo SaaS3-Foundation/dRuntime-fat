@@ -1,16 +1,13 @@
 import '@phala/pink-env'
-//import * as jp from 'jsonpath'
+import * as R from 'ramda'
 
 const pink = globalThis.pink;
-//let scriptArgs = ["{\"a\": \"2\"}", "a"];
+let scriptArgs = ["{\"a\": \"2\"}", "a"];
 
 (function () {
-  let j = JSON.parse(scriptArgs[0]) as any;
-  const path = scriptArgs[1]
-  let pp = path.split('.');
-  for(let i = 0;i < pp.length;i++) {
-    j = j[pp[i]];
-  }
-  console.log(j);
-  return j;
+  const j = JSON.parse(scriptArgs[0]);
+  const path = scriptArgs[1].split('.');
+  const v = R.path(path, j);
+  console.log(v);
+  return v;
 })()
