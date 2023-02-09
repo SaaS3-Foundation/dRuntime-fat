@@ -11,3 +11,8 @@ cd src/js && yarn run build
 cd -
 cargo +nightly contract build --release
 ```
+
+## Test
+```
+cargo +nightly test
+```
