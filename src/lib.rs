@@ -219,35 +219,22 @@ mod druntime {
         }
 
         #[ink(message)]
-        pub fn run_js(&self, json_text: String, path: String) -> Result<String> {
-            let uri = "https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd";
-
-            #[cfg(feature = "std")]
-            println!("Got uri {:?}", uri);
-
-            let resp = http_get!(uri);
-            if resp.status_code != 200 {
-                return Err(Error::Web2StatusError);
-            }
-
-            #[cfg(feature = "std")]
-            println!("Got response {:?}", resp.body);
-
-            let jt = core::str::from_utf8(resp.body.as_slice()).map_err(|_| Error::InvalidUtf8)?;
-            //let v = self.run_js(jt.to_string(), _path)?;
+        pub fn run_js(&self, delegate: String, json_text: String, path: String) -> Result<String> {
             let script = include_str!("js/dist/index.js");
-            // let r = crate::js::eval(script, &[json_text.clone(), path.clone()]);
-            let r = crate::js::eval(script, &[jt.to_string(), path.clone()]);
+            let r = crate::js::eval(&delegate, script, &[json_text.clone(), path.clone()]);
             if r.is_err() {
-                pink::error!("eval js error: {:?}, json_text: {:?}, path: {:?}", r.err().unwrap(), json_text, path);
+                pink::error!(
+                    "eval js error: {:?}, json_text: {:?}, path: {:?}",
+                    r.err().unwrap(),
+                    json_text,
+                    path
+                );
                 return Err(Error::EvalJsError);
             }
             match r.unwrap() {
                 crate::js::Output::String(s) => {
-                    #[cfg(feature = "std")]
-                    println!("s: {}", s);
-
-                    Err(Error::JsScriptReturnError)
+                    pink::debug!("Output String {:?}", s);
+                    Ok(s)
                 }
                 crate::js::Output::Bytes(b) => Ok(String::from_utf8(b).unwrap()),
             }
@@ -376,7 +363,7 @@ mod druntime {
             println!("Got response {:?}", resp.body);
 
             let jt = core::str::from_utf8(resp.body.as_slice()).map_err(|_| Error::InvalidUtf8)?;
-            let v = self.run_js(jt.to_string(), _path)?;
+            let v = self.run_js(qjs.clone(), jt.to_string(), _path)?;
 
             #[cfg(feature = "std")]
             println!("Got value {:#?}", v);
@@ -386,8 +373,7 @@ mod druntime {
             #[cfg(feature = "std")]
             println!("answer {:#?}", answer);
 
-            //let answer = ethabi::encode(&[answer]);
-            let answer = ethabi::encode(&[ethabi::Token::Uint(U256::from(1))]);
+            let answer = ethabi::encode(&[answer]);
 
             // Apply the response to request
             let payload =
@@ -482,19 +468,13 @@ mod druntime {
         }
 
         #[ink::test]
-        fn eval_js_should_ok() {
+        fn encode_answer_should_ok() {
             let _ = env_logger::try_init();
             pink_extension_runtime::mock_ext::mock_all_ext();
 
             let oracle = Oracle::default();
-            let r = hex::decode("ab2fde00a6df6a0443ae4fafc0d27c19907b105475e119556b4ad35acda0a90b");
-            if r.is_err() {
-                println!("err {:#?}", r.err().unwrap());
-            }
-            let r = oracle.run_js(r#"{ a: "b"}"#.to_string(), "$.a".to_string());
-            if r.is_err() {
-                println!("err {:#?}", r.err().unwrap());
-            }
+            let v = oracle.encode_answer("1.234".to_string(), "uint256", 1000);
+            println!("{:#?}", v);
         }
 
         fn consts() -> (String, H160, String) {
@@ -515,26 +495,7 @@ mod druntime {
             (rpc, anchor_addr, qjs.to_string())
         }
 
-        #[ink::test]
-        fn default_works() {
-            let _ = env_logger::try_init();
-            pink_extension_runtime::mock_ext::mock_all_ext();
 
-            let (rpc, anchor_addr, qjs) = consts();
-
-            let mut oracle = Oracle::default();
-            oracle
-                .config(
-                    Some(rpc),
-                    Some(anchor_addr),
-                    Some(qjs),
-                    Some("https://rpc.saas3.io:3301/saas3/web2/qatar2022/played".to_string()),
-                    None,
-                )
-                .unwrap();
-            let res = oracle.handle_req().unwrap();
-            println!("res: {:#?}", res);
-        }
     }
 }
 
@@ -553,23 +514,21 @@ mod js {
         Bytes(Vec<u8>),
     }
 
-    pub fn eval(script: &str, args: &[String]) -> Result<Output, String> {
+    pub fn eval(delegate_hash: &str, script: &str, args: &[String]) -> Result<Output, String> {
         use ink_env::call;
-        //let system = pink::system::SystemRef::instance();
-        //let delegate = system
-        //    .get_driver("JsDelegate".into())
-        //    .ok_or("No JS driver found")?;
-        let hash: ink_env::Hash =
-            hex::decode("ab2fde00a6df6a0443ae4fafc0d27c19907b105475e119556b4ad35acda0a90b")
-                .unwrap()
-                .as_slice()
-                .try_into()
-                .unwrap();
+        let system = pink::system::SystemRef::instance();
+        let delegate = system
+            .get_driver("JsDelegate".into())
+            .ok_or("No JS driver found")?;
+
+        let hs = delegate_hash.strip_prefix("0x").unwrap();
+
+        let hash: ink_env::Hash = hex::decode("").unwrap().as_slice().try_into().unwrap();
 
         pink::debug!("args {:#?}", args);
 
         let result = call::build_call::<pink::PinkEnvironment>()
-            .call_type(call::DelegateCall::new().code_hash(hash))
+            .call_type(call::DelegateCall::new().code_hash(delegate.convert_to()))
             .exec_input(
                 call::ExecutionInput::new(call::Selector::new(0x49bfcd24_u32.to_be_bytes()))
                     .push_arg(script)
