@@ -1,4 +1,5 @@
 #![cfg_attr(not(feature = "std"), no_std)]
+#![feature(let_else)]
 
 extern crate alloc;
 
@@ -13,11 +14,11 @@ mod druntime {
 
     use alloc::{borrow::ToOwned, string::String, string::ToString, vec::Vec};
     use ink_storage::traits::{PackedLayout, SpreadLayout};
-    use phat_offchain_rollup::{
-        clients::evm::read::{Action, QueuedRollupSession},
-        lock::GLOBAL as GLOBAL_LOCK,
-        RollupHandler, RollupResult,
-    };
+
+    // To enable `(result).log_err("Reason")?`
+    use phat_offchain_rollup::{clients::evm::EvmRollupClient, Action};
+    use pink::ResultExt;
+
     use pink_extension as pink;
     use pink_web3::ethabi;
     use primitive_types::H160;
@@ -28,6 +29,10 @@ mod druntime {
     use hex;
     use pink::http_get;
     use primitive_types::U256;
+
+    // Defined in SaaS3 Protocol
+    const TYPE_RESPONSE: u32 = 0;
+    const TYPE_ERROR: u32 = 1;
 
     /// The the storage of druntime
     #[ink(storage)]
@@ -45,6 +50,8 @@ mod druntime {
     struct Config {
         rpc: String,
         anchor: [u8; 20],
+        /// Key for submiting rollup transaction
+        submit_key: [u8; 32],
         qjs: String,
         url: String,
         apikey: Option<String>,
@@ -53,8 +60,17 @@ mod druntime {
     #[derive(Encode, Decode, Debug, PartialEq)]
     #[cfg_attr(feature = "std", derive(scale_info::TypeInfo))]
     pub enum Error {
+        // basic error
         BadOrigin,
-        NotConfigurated,
+        NotConfigured,
+        // config
+        InvalidKeyLength,
+        // fetching request error
+        FailedToCreateClient,
+        NoRequestInQueue,
+        FailedToDecode,
+        // handling request error
+        // js handling error
         BadAbi,
         FailedToGetStorage,
         FailedToDecodeStorage,
@@ -66,8 +82,9 @@ mod druntime {
         Web2StatusError,
         TimesTooSmall,
         FailedToCreateRollupSession,
-        FailedToFetchLock,
-        FailedToReadQueueHead,
+        // transaction error
+        FailedToCommitTx,
+        FailedToSendTransaction,
         FailedToDecodeNumberFromJson,
         TypeNotSet,
         InvalidType,
@@ -103,6 +120,7 @@ mod druntime {
             target_chain_rpc: Option<String>,
             // phala anchor contract address
             anchor_contract_addr: Option<H160>,
+            submit_key: Option<U256>,
             // js engine code hash string
             js_engine_code_hash: Option<String>,
             // web2 api url prefix
@@ -115,12 +133,15 @@ mod druntime {
                 if target_chain_rpc.is_none()
                     || anchor_contract_addr.is_none()
                     || js_engine_code_hash.is_none()
+                    || submit_key.is_none()
                 {
-                    return Err(Error::NotConfigurated);
+                    return Err(Error::NotConfigured);
                 }
+                pink::debug!("submit key {:#?}", submit_key.unwrap());
                 self.config = Some(Config {
                     rpc: target_chain_rpc.unwrap(),
                     anchor: anchor_contract_addr.unwrap().into(),
+                    submit_key: submit_key.unwrap().into(),
                     qjs: js_engine_code_hash.unwrap().into(),
                     url: web2_api_url_prefix.unwrap_or_default(),
                     apikey: api_key,
@@ -132,6 +153,10 @@ mod druntime {
                 if let Some(anchor) = anchor_contract_addr {
                     self.config.as_mut().unwrap().anchor = anchor.into();
                 }
+                if let Some(sk) = submit_key {
+                    self.config.as_mut().unwrap().submit_key =
+                        sk.try_into().or(Err(Error::InvalidKeyLength))?;
+                }
                 if let Some(qjs) = js_engine_code_hash {
                     self.config.as_mut().unwrap().qjs = qjs.into();
                 }
@@ -142,6 +167,14 @@ mod druntime {
                     self.config.as_mut().unwrap().apikey = Some(apikey);
                 }
             }
+            Ok(())
+        }
+
+        /// Transfers the ownership of the contract (admin only)
+        #[ink(message)]
+        pub fn transfer_ownership(&mut self, new_owner: AccountId) -> Result<()> {
+            self.ensure_owner()?;
+            self.owner = new_owner;
             Ok(())
         }
 
@@ -240,70 +273,64 @@ mod druntime {
             }
         }
 
-        fn handle_req(&self) -> Result<Option<RollupResult>> {
+        /// Processes a oracle request by a rollup transaction
+        #[ink(message)]
+        pub fn answer(&self) -> Result<Option<Vec<u8>>> {
+            use ethabi::Token;
+            let config = self.ensure_configured()?;
+            // Initialize a rollup client. The client tracks a "rollup transaction" that allows you
+            // to read, write, and execute actions on the target chain with atomicity.
+            let mut client = connect(&config)?;
+            let action = match self.handle_req(&mut client)? {
+                OracleResponse::Response(rid, answer) => ethabi::encode(&[
+                    Token::Uint(TYPE_RESPONSE.into()),
+                    Token::Uint(rid),
+                    Token::Bytes(answer.into()),
+                ]),
+                OracleResponse::Error(rid, error) => ethabi::encode(&[
+                    Token::Uint(TYPE_ERROR.into()),
+                    Token::Uint(rid.unwrap_or_default()),
+                    Token::Bytes(ethabi::encode(&[ethabi::Token::Uint((error as u8).into())])),
+                ]),
+            };
+            client.action(Action::Reply(action));
+            maybe_submit_tx(client, &config)
+        }
+
+        fn handle_req(&self, client: &mut EvmRollupClient) -> Result<OracleResponse> {
             #[cfg(feature = "std")]
             println!("handling req");
 
-            let Config {
-                rpc,
-                anchor,
-                qjs,
-                url,
-                apikey: _,
-            } = self.config.as_ref().ok_or(Error::NotConfigurated)?;
+            use ethabi::ParamType;
+            use pink_kv_session::traits::QueueSession;
 
-            let mut rollup =
-                QueuedRollupSession::new(rpc, anchor.into(), |_locks| {}).map_err(|e| {
-                    pink::warn!("Failed to create rollup session: {e:?}");
-                    Error::FailedToCreateRollupSession
-                })?;
+            let config = self.ensure_configured()?;
 
-            // Declare write to global lock since it pops an element from the queue
-            rollup.lock_read(GLOBAL_LOCK).map_err(|e| {
-                pink::warn!("Failed to fetch lock: {e:?}");
-                Error::FailedToFetchLock
-            })?;
-
-            #[cfg(feature = "std")]
-            println!("reading raw data from qeueue ...");
-
-            // Read the first item in the queue (return if the queue is empty)
-            let (raw_item, idx) = rollup.queue_head().map_err(|e| {
-                pink::warn!("Failed to read queue head: {e:?}");
-                Error::FailedToReadQueueHead
-            })?;
-
-            let raw_item = match raw_item {
-                Some(v) => v,
-                _ => {
-                    pink::debug!("No items in the queue. Returning.");
-                    return Ok(None);
-                }
-            };
-
-            #[cfg(feature = "std")]
-            println!("raw_item {:?}", raw_item);
+            // Get a request if presents
+            let raw_req = client
+                .session()
+                .pop()
+                .log_err("answer_request: failed to read queue")
+                .or(Err(Error::FailedToGetStorage))?
+                .ok_or(Error::NoRequestInQueue)?;
 
             // Decode the queue data by ethabi (u256, bytes)
-            let decoded = ethabi::decode(
-                &[ethabi::ParamType::Uint(32), ethabi::ParamType::Bytes],
-                &raw_item,
-            )
-            .or(Err(Error::FailedToDecodeStorage))?;
+            let Ok(decoded) = ethabi::decode(&[ParamType::Uint(32), ParamType::Bytes], &raw_req) else {
+                return Ok(OracleResponse::Error(None, Error::FailedToDecode))
+            };
 
-            let (rid, parameter_abi_bytes) = match decoded.as_slice() {
+            let (rid, abi_bytes) = match decoded.as_slice() {
                 [ethabi::Token::Uint(reqid), ethabi::Token::Bytes(content)] => (reqid, content),
                 _ => return Err(Error::FailedToDecodeOracleRequest),
             };
 
-            #[cfg(feature = "std")]
-            println!("ask_id {:?}", rid);
-
-            let decoded_abi = ABI::decode_from_slice(parameter_abi_bytes, true)
-                .or(Err(Error::FailedToDecodeParams))?;
+            let decoded_abi =
+                ABI::decode_from_slice(abi_bytes, true).or(Err(Error::FailedToDecodeParams))?;
 
             #[cfg(feature = "std")]
             println!("Got decoded params abi {:?}", decoded_abi);
+
+            pink::debug!("decoded_abi {:#?}", decoded_abi);
 
             // build url suffix
             let url_suffix = decoded_abi
@@ -337,7 +364,7 @@ mod druntime {
             let _times = decoded_abi
                 .params
                 .iter()
-                .find(|param| param.get_name() == "_times")
+                .find(|param| param.get_name() == "_times" && !param.get_value().is_empty())
                 .get_or_insert(&abi::Param::String {
                     name: "_times".to_string(),
                     value: "100".to_string(),
@@ -349,10 +376,14 @@ mod druntime {
             #[cfg(feature = "std")]
             println!("Got url suffix {:?}", url_suffix);
 
-            let uri = url.to_owned() + "?" + &url_suffix;
+            pink::debug!("url suffix {:?}", url_suffix);
+
+            let uri = config.url.to_owned() + "?" + &url_suffix;
 
             #[cfg(feature = "std")]
             println!("Got uri {:?}", uri);
+
+            pink::debug!("Got uri {:?}", uri);
 
             let resp = http_get!(uri);
             if resp.status_code != 200 {
@@ -362,29 +393,29 @@ mod druntime {
             #[cfg(feature = "std")]
             println!("Got response {:?}", resp.body);
 
+            pink::debug!("Got response {:?}", resp.body);
+
             let jt = core::str::from_utf8(resp.body.as_slice()).map_err(|_| Error::InvalidUtf8)?;
-            let v = self.run_js(qjs.clone(), jt.to_string(), _path)?;
+
+            pink::debug!("json string: {:?}", jt);
+
+            let v = self.run_js(config.qjs.clone(), jt.to_string(), _path)?;
 
             #[cfg(feature = "std")]
             println!("Got value {:#?}", v);
+
+            pink::debug!("Got value {:#?}", v);
 
             let answer = self.encode_answer(v, &_type, _times)?;
 
             #[cfg(feature = "std")]
             println!("answer {:#?}", answer);
 
+            pink::debug!("answer {:#?}", answer);
+
             let answer = ethabi::encode(&[answer]);
 
-            // Apply the response to request
-            let payload =
-                ethabi::encode(&[ethabi::Token::Uint(*rid), ethabi::Token::Bytes(answer)]);
-
-            rollup
-                .tx_mut()
-                .action(Action::Reply(payload))
-                .action(Action::ProcessedTo(idx + 1));
-
-            Ok(Some(rollup.build()))
+            Ok(OracleResponse::Response(*rid, answer))
         }
 
         /// Returns BadOrigin error if the caller is not the owner
@@ -395,15 +426,39 @@ mod druntime {
                 Err(Error::BadOrigin)
             }
         }
+
+        /// Returns the config reference or raise the error `NotConfigured`
+        fn ensure_configured(&self) -> Result<&Config> {
+            self.config.as_ref().ok_or(Error::NotConfigured)
+        }
     }
 
-    impl RollupHandler for Oracle {
-        /// The anchor contract message handler
-        /// It should be called by a scheduled task
-        #[ink(message)]
-        fn handle_rollup(&self) -> core::result::Result<Option<RollupResult>, Vec<u8>> {
-            self.handle_req().map_err(|e| Encode::encode(&e))
+    enum OracleResponse {
+        Response(U256, Vec<u8>),
+        Error(Option<U256>, Error),
+    }
+
+    fn connect(config: &Config) -> Result<EvmRollupClient> {
+        let anchor_addr: H160 = config.anchor.into();
+        EvmRollupClient::new(&config.rpc, anchor_addr, b"q/")
+            .log_err("failed to create rollup client")
+            .or(Err(Error::FailedToCreateClient))
+    }
+
+    fn maybe_submit_tx(client: EvmRollupClient, config: &Config) -> Result<Option<Vec<u8>>> {
+        let maybe_submittable = client
+            .commit()
+            .log_err("failed to commit")
+            .or(Err(Error::FailedToCommitTx))?;
+        if let Some(submittable) = maybe_submittable {
+            let pair = pink_web3::keys::pink::KeyPair::from(config.submit_key);
+            let tx_id = submittable
+                .submit(pair)
+                .log_err("failed to submit rollup tx")
+                .or(Err(Error::FailedToSendTransaction))?;
+            return Ok(Some(tx_id));
         }
+        Ok(None)
     }
 
     #[cfg(test)]
@@ -494,8 +549,6 @@ mod druntime {
             let anchor_addr: H160 = anchor_addr.into();
             (rpc, anchor_addr, qjs.to_string())
         }
-
-
     }
 }
 
@@ -516,19 +569,20 @@ mod js {
 
     pub fn eval(delegate_hash: &str, script: &str, args: &[String]) -> Result<Output, String> {
         use ink_env::call;
-        let system = pink::system::SystemRef::instance();
-        let delegate = system
-            .get_driver("JsDelegate".into())
-            .ok_or("No JS driver found")?;
+        //let system = pink::system::SystemRef::instance();
+        //let delegate = system
+        //    .get_driver("JsDelegate".into())
+        //    .ok_or("No JS driver found")?;
 
         let hs = delegate_hash.strip_prefix("0x").unwrap();
 
-        let hash: ink_env::Hash = hex::decode("").unwrap().as_slice().try_into().unwrap();
+        let hash: ink_env::Hash = hex::decode(hs).unwrap().as_slice().try_into().unwrap();
 
         pink::debug!("args {:#?}", args);
 
         let result = call::build_call::<pink::PinkEnvironment>()
-            .call_type(call::DelegateCall::new().code_hash(delegate.convert_to()))
+            //.call_type(call::DelegateCall::new().code_hash(delegate.convert_to()))
+            .call_type(call::DelegateCall::new().code_hash(hash))
             .exec_input(
                 call::ExecutionInput::new(call::Selector::new(0x49bfcd24_u32.to_be_bytes()))
                     .push_arg(script)

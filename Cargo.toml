@@ -1,6 +1,6 @@
 [package]
 name = "druntime"
-version = "0.2.0"
+version = "2.0.0"
 authors = ["tianyi <tianyi@saas3.io>"]
 edition = "2021"
 
@@ -19,14 +19,15 @@ scale = { package = "parity-scale-codec", version = "3", default-features = fals
 scale-info = { version = "2", default-features = false, features = ["derive"], optional = true }
 primitive-types = { version = "0.11", default-features = false, features = ["codec", "scale-info"] }
 
-pink-extension = { version = "0.1", default-features = false }
+pink-extension = { version = "0.2", default-features = false }
 pink-web3 = { version = "0.19", default-features = false, features = ["pink", "signing"] }
 ethabi = { version = "17.2.0", package = "pink-ethabi", default-features = false, features = [
-    "serde",
+    "serde",    
     "rlp",
 ] }
 
-phat_offchain_rollup = { path = "../../phat-stateful-rollup/phat/rollup", default-features = false }
+phat_offchain_rollup = { path = "../../phat-stateful-rollup/phat/crates/rollup/", default-features = false, features = ["evm"] }
+pink-kv-session = "0.2"
 
 #abi = { git = "https://github.com/SaaS3-Foundation/abi.git" }
 abi = { path = "../abi" }
@@ -37,7 +38,8 @@ hex = { version = "0.4", default-features = false }
 [dev-dependencies]
 dotenvy = "0.15"
 hex = "0.4"
-pink-extension-runtime = { version = "0.1", default-features = false }
+pink-extension-runtime = { version = "0.2", default-features = false }
+#phat_offchain_rollup = { path = "../../phat-stateful-rollup/phat/crates/rollup", default-features = false, features = ["evm", "logging"] }
 env_logger = "0.9.0"
 
 [lib]
@@ -61,7 +63,6 @@ std = [
     "phat_offchain_rollup/std",
     "pink-extension/std",
     "pink-web3/std",
-    "phat_offchain_rollup/std",
 ]
 ink-as-dependency = []
 [patch.crates-io]

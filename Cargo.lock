@@ -450,7 +450,7 @@ checksum = "9ea835d29036a4087793836fa931b08837ad5e957da9e23886b29586fb9b6650"
 
 [[package]]
 name = "druntime"
-version = "0.2.0"
+version = "2.0.0"
 dependencies = [
  "abi",
  "dotenvy",
@@ -464,8 +464,9 @@ dependencies = [
  "parity-scale-codec",
  "phat_offchain_rollup",
  "pink-ethabi",
- "pink-extension",
+ "pink-extension 0.2.1",
  "pink-extension-runtime",
+ "pink-kv-session",
  "pink-web3",
  "primitive-types",
  "scale-info",
@@ -820,6 +821,12 @@ name = "hex-literal"
 version = "0.3.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7ebdb29d2ea9ed0083cd8cece49bbd968021bd99b0849edb4a9a7ee0fdf6a4e0"
+
+[[package]]
+name = "hex_fmt"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b07f60793ff0a4d9cef0f18e63b5357e06209987153a64648c972c1e5aff336f"
 
 [[package]]
 name = "hmac"
@@ -1559,6 +1566,9 @@ dependencies = [
  "ink_storage",
  "parity-scale-codec",
  "pink-ethabi",
+ "pink-extension 0.2.1",
+ "pink-kv-session",
+ "pink-subrpc",
  "pink-web3",
  "primitive-types",
  "scale-info",
@@ -1632,7 +1642,24 @@ dependencies = [
  "ink_storage",
  "log",
  "parity-scale-codec",
- "pink-extension-macro",
+ "pink-extension-macro 0.1.6",
+ "scale-info",
+]
+
+[[package]]
+name = "pink-extension"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f17a9a079aedd5989d18d6e9c15bf0aea141b626b67b72bff3a35a980cea77ec"
+dependencies = [
+ "ink_env",
+ "ink_lang",
+ "ink_metadata",
+ "ink_primitives",
+ "ink_storage",
+ "log",
+ "parity-scale-codec",
+ "pink-extension-macro 0.2.0",
  "scale-info",
 ]
 
@@ -1653,14 +1680,32 @@ dependencies = [
 ]
 
 [[package]]
-name = "pink-extension-runtime"
-version = "0.1.5"
+name = "pink-extension-macro"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "312bcb6e8944889e3e860755b1b370ef4a2610dda9ff7cc4f4888d3046b0622b"
+checksum = "82d61042acb661b628821b189b76c9b68577e311fbd077eff9d909ebcddd277e"
+dependencies = [
+ "heck",
+ "ink_lang_ir",
+ "ink_lang_macro",
+ "proc-macro-crate",
+ "proc-macro2",
+ "quote",
+ "syn",
+ "unzip3",
+]
+
+[[package]]
+name = "pink-extension-runtime"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0d108f7511a5456a3ec1a83f1b818e2e09144f71488a2efedcaf017c24ba8201"
 dependencies = [
  "getrandom 0.2.8",
+ "hex_fmt",
  "log",
- "pink-extension",
+ "once_cell",
+ "pink-extension 0.2.1",
  "reqwest",
  "reqwest-env-proxy",
  "ring",
@@ -1679,6 +1724,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "pink-kv-session"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3da595e670ee22ac5ae563a55388ce2148d68b993fe09ca0099a247cb55cf790"
+
+[[package]]
+name = "pink-subrpc"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "62d0f91f33770e2d2feb99396efafcb430a28362b749fd9bb38dc0a9672bed5c"
+dependencies = [
+ "base58",
+ "hex",
+ "hex-literal",
+ "parity-scale-codec",
+ "pink-extension 0.2.1",
+ "pink-json",
+ "primitive-types",
+ "scale-info",
+ "serde",
+ "sp-core-hashing 6.0.0",
+ "ss58-registry",
+]
+
+[[package]]
 name = "pink-web3"
 version = "0.19.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1693,7 +1763,7 @@ dependencies = [
  "pin-project",
  "pink-erased-serde",
  "pink-ethabi",
- "pink-extension",
+ "pink-extension 0.1.19",
  "pink-json",
  "rlp",
  "serde",
@@ -2296,11 +2366,11 @@ dependencies = [
  "secp256k1 0.21.3",
  "secrecy",
  "serde",
- "sp-core-hashing",
+ "sp-core-hashing 4.0.0",
  "sp-debug-derive",
  "sp-externalities",
  "sp-runtime-interface",
- "sp-std",
+ "sp-std 4.0.0",
  "sp-storage",
  "ss58-registry",
  "substrate-bip39",
@@ -2319,8 +2389,23 @@ dependencies = [
  "blake2-rfc",
  "byteorder",
  "sha2 0.9.9",
- "sp-std",
+ "sp-std 4.0.0",
  "tiny-keccak",
+ "twox-hash",
+]
+
+[[package]]
+name = "sp-core-hashing"
+version = "6.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cbc2d1947252b7a4e403b0a260f596920443742791765ec111daa2bbf98eff25"
+dependencies = [
+ "blake2",
+ "byteorder",
+ "digest 0.10.5",
+ "sha2 0.10.6",
+ "sha3",
+ "sp-std 6.0.0",
  "twox-hash",
 ]
 
@@ -2343,7 +2428,7 @@ checksum = "0fcfd91f92a2a59224230a77c4a5d6f51709620c0aab4e51f108ccece6adc56f"
 dependencies = [
  "environmental",
  "parity-scale-codec",
- "sp-std",
+ "sp-std 4.0.0",
  "sp-storage",
 ]
 
@@ -2358,7 +2443,7 @@ dependencies = [
  "primitive-types",
  "sp-externalities",
  "sp-runtime-interface-proc-macro",
- "sp-std",
+ "sp-std 4.0.0",
  "sp-storage",
  "sp-tracing",
  "sp-wasm-interface",
@@ -2385,6 +2470,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "14804d6069ee7a388240b665f17908d98386ffb0b5d39f89a4099fc7a2a4c03f"
 
 [[package]]
+name = "sp-std"
+version = "6.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af0ee286f98455272f64ac5bb1384ff21ac029fbb669afbaf48477faff12760e"
+
+[[package]]
 name = "sp-storage"
 version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2395,7 +2486,7 @@ dependencies = [
  "ref-cast",
  "serde",
  "sp-debug-derive",
- "sp-std",
+ "sp-std 4.0.0",
 ]
 
 [[package]]
@@ -2405,7 +2496,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "69a67e555d171c4238bd223393cda747dd20ec7d4f5fe5c042c056cb7fde9eda"
 dependencies = [
  "parity-scale-codec",
- "sp-std",
+ "sp-std 4.0.0",
  "tracing",
  "tracing-core",
  "tracing-subscriber",
@@ -2420,7 +2511,7 @@ dependencies = [
  "impl-trait-for-tuples",
  "log",
  "parity-scale-codec",
- "sp-std",
+ "sp-std 4.0.0",
  "wasmi",
 ]
 
@@ -2746,6 +2837,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "97fee6b57c6a41524a810daee9286c02d7752c4253064d0b05472833a438f675"
 dependencies = [
  "cfg-if",
+ "digest 0.10.5",
  "rand 0.8.5",
  "static_assertions",
 ]
