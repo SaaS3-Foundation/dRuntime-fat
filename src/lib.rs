@@ -558,15 +558,6 @@ mod druntime {
             println!("{:#?}", v);
         }
 
-        #[ink::test]
-        fn decode_hash_should_ok() {
-            let de_str =
-                "0xab2fde00a6df6a0443ae4fafc0d27c19907b105475e119556b4ad35acda0a90b".to_string();
-            let hs = de_str.strip_prefix("0x").unwrap();
-            let hash: ink_env::Hash = hex::decode(hs).unwrap().as_slice().try_into().unwrap();
-            println!("{:#?}", hash);
-        }
-
         fn consts() -> (String, H160, String) {
             dotenvy::dotenv().ok();
             // let rpc = env::var("RPC").unwrap();
@@ -611,7 +602,11 @@ mod js {
 
         pink::debug!("decoding hash string {:#?}", delegate_hash);
 
-        let hash: ink_env::Hash = hex::decode(delegate_hash).unwrap().as_slice().try_into().unwrap();
+        let hash: ink_env::Hash = hex::decode(delegate_hash)
+            .unwrap()
+            .as_slice()
+            .try_into()
+            .unwrap();
 
         pink::debug!("hash {:#?}, args {:#?}", hash, args);
 
