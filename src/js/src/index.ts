@@ -7,7 +7,5 @@ let scriptArgs = ["{\"a\": \"2\"}", "a"];
 (function () {
   const j = JSON.parse(scriptArgs[0]);
   const path = scriptArgs[1].split('.');
-  const v = R.path(path, j);
-  console.log(v);
-  return v;
+  return R.path(path, j);
 })()

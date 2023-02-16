@@ -65,6 +65,7 @@ mod druntime {
         NotConfigured,
         // config
         InvalidKeyLength,
+        InvaldJsCodeHashPrefix,
         // fetching request error
         FailedToCreateClient,
         NoRequestInQueue,
@@ -137,12 +138,15 @@ mod druntime {
                 {
                     return Err(Error::NotConfigured);
                 }
+                if js_engine_code_hash.clone().unwrap().starts_with("0x") {
+                    return Err(Error::InvaldJsCodeHashPrefix);
+                }
                 pink::debug!("submit key {:#?}", submit_key.unwrap());
                 self.config = Some(Config {
                     rpc: target_chain_rpc.unwrap(),
                     anchor: anchor_contract_addr.unwrap().into(),
                     submit_key: submit_key.unwrap().into(),
-                    qjs: js_engine_code_hash.unwrap().into(),
+                    qjs: js_engine_code_hash.unwrap(),
                     url: web2_api_url_prefix.unwrap_or_default(),
                     apikey: api_key,
                 });
@@ -158,7 +162,10 @@ mod druntime {
                         sk.try_into().or(Err(Error::InvalidKeyLength))?;
                 }
                 if let Some(qjs) = js_engine_code_hash {
-                    self.config.as_mut().unwrap().qjs = qjs.into();
+                    if qjs.starts_with("0x") {
+                        return Err(Error::InvaldJsCodeHashPrefix);
+                    }
+                    self.config.as_mut().unwrap().qjs = qjs;
                 }
                 if let Some(url) = web2_api_url_prefix {
                     self.config.as_mut().unwrap().url = url;
@@ -249,6 +256,25 @@ mod druntime {
                 "int256" => Ok(self.encode_from_string_to_256(s, true, _times)?),
                 _ => Err(Error::InvalidType),
             };
+        }
+        #[ink(message)]
+        pub fn test_run_js(&self, url: String, path: String) -> Result<String> {
+            let config = self.ensure_configured()?;
+            pink::debug!("config {:#?}", config);
+
+            let resp = http_get!(url);
+            if resp.status_code != 200 {
+                return Err(Error::Web2StatusError);
+            }
+
+            #[cfg(feature = "std")]
+            println!("Got response {:?}", resp.body);
+
+            let jt = core::str::from_utf8(resp.body.as_slice()).map_err(|_| Error::InvalidUtf8)?;
+            pink::debug!("Json string: {:#?}", jt);
+
+            let v = self.run_js(config.qjs.clone(), jt.to_string(), path)?;
+            Ok(v)
         }
 
         #[ink(message)]
@@ -532,6 +558,15 @@ mod druntime {
             println!("{:#?}", v);
         }
 
+        #[ink::test]
+        fn decode_hash_should_ok() {
+            let de_str =
+                "0xab2fde00a6df6a0443ae4fafc0d27c19907b105475e119556b4ad35acda0a90b".to_string();
+            let hs = de_str.strip_prefix("0x").unwrap();
+            let hash: ink_env::Hash = hex::decode(hs).unwrap().as_slice().try_into().unwrap();
+            println!("{:#?}", hash);
+        }
+
         fn consts() -> (String, H160, String) {
             dotenvy::dotenv().ok();
             // let rpc = env::var("RPC").unwrap();
@@ -574,11 +609,11 @@ mod js {
         //    .get_driver("JsDelegate".into())
         //    .ok_or("No JS driver found")?;
 
-        let hs = delegate_hash.strip_prefix("0x").unwrap();
+        pink::debug!("decoding hash string {:#?}", delegate_hash);
 
-        let hash: ink_env::Hash = hex::decode(hs).unwrap().as_slice().try_into().unwrap();
+        let hash: ink_env::Hash = hex::decode(delegate_hash).unwrap().as_slice().try_into().unwrap();
 
-        pink::debug!("args {:#?}", args);
+        pink::debug!("hash {:#?}, args {:#?}", hash, args);
 
         let result = call::build_call::<pink::PinkEnvironment>()
             //.call_type(call::DelegateCall::new().code_hash(delegate.convert_to()))
