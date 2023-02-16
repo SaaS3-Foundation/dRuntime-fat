@@ -1,0 +1,894 @@
+{
+  "source": {
+    "hash": "0x4ee6363e975b1be4b05abf180b2f189da1d9a50a1c3cf7e606c7650b834aca1b",
+    "language": "ink! 3.4.0",
+    "compiler": "rustc 1.68.0-nightly"
+  },
+  "contract": {
+    "name": "druntime",
+    "version": "2.0.9",
+    "authors": [
+      "tianyi <tianyi@saas3.io>"
+    ]
+  },
+  "V3": {
+    "spec": {
+      "constructors": [
+        {
+          "args": [],
+          "docs": [],
+          "label": "default",
+          "payable": false,
+          "selector": "0xed4b9d1b"
+        }
+      ],
+      "docs": [
+        " Fat contract version SaaS3 decentralized oracle runtime",
+        " `config`  should be called after the deployment of the contract",
+        " With phala TEE environment, the oracle data like API token can be safely stored in the contract"
+      ],
+      "events": [],
+      "messages": [
+        {
+          "args": [
+            {
+              "label": "target_chain_rpc",
+              "type": {
+                "displayName": [
+                  "Option"
+                ],
+                "type": 4
+              }
+            },
+            {
+              "label": "anchor_contract_addr",
+              "type": {
+                "displayName": [
+                  "Option"
+                ],
+                "type": 5
+              }
+            },
+            {
+              "label": "submit_key",
+              "type": {
+                "displayName": [
+                  "Option"
+                ],
+                "type": 8
+              }
+            },
+            {
+              "label": "js_engine_code_hash",
+              "type": {
+                "displayName": [
+                  "Option"
+                ],
+                "type": 4
+              }
+            },
+            {
+              "label": "web2_api_url_prefix",
+              "type": {
+                "displayName": [
+                  "Option"
+                ],
+                "type": 4
+              }
+            },
+            {
+              "label": "api_key",
+              "type": {
+                "displayName": [
+                  "Option"
+                ],
+                "type": 4
+              }
+            }
+          ],
+          "docs": [
+            " Configures the oracle"
+          ],
+          "label": "config",
+          "mutates": true,
+          "payable": false,
+          "returnType": {
+            "displayName": [
+              "Result"
+            ],
+            "type": 12
+          },
+          "selector": "0x70714744"
+        },
+        {
+          "args": [
+            {
+              "label": "new_owner",
+              "type": {
+                "displayName": [
+                  "AccountId"
+                ],
+                "type": 0
+              }
+            }
+          ],
+          "docs": [
+            " Transfers the ownership of the contract (admin only)"
+          ],
+          "label": "transfer_ownership",
+          "mutates": true,
+          "payable": false,
+          "returnType": {
+            "displayName": [
+              "Result"
+            ],
+            "type": 12
+          },
+          "selector": "0x107e33ea"
+        },
+        {
+          "args": [
+            {
+              "label": "url",
+              "type": {
+                "displayName": [
+                  "String"
+                ],
+                "type": 3
+              }
+            },
+            {
+              "label": "path",
+              "type": {
+                "displayName": [
+                  "String"
+                ],
+                "type": 3
+              }
+            }
+          ],
+          "docs": [],
+          "label": "test_run_js",
+          "mutates": false,
+          "payable": false,
+          "returnType": {
+            "displayName": [
+              "Result"
+            ],
+            "type": 15
+          },
+          "selector": "0xb3e889c2"
+        },
+        {
+          "args": [
+            {
+              "label": "delegate",
+              "type": {
+                "displayName": [
+                  "String"
+                ],
+                "type": 3
+              }
+            },
+            {
+              "label": "json_text",
+              "type": {
+                "displayName": [
+                  "String"
+                ],
+                "type": 3
+              }
+            },
+            {
+              "label": "path",
+              "type": {
+                "displayName": [
+                  "String"
+                ],
+                "type": 3
+              }
+            }
+          ],
+          "docs": [],
+          "label": "run_js",
+          "mutates": false,
+          "payable": false,
+          "returnType": {
+            "displayName": [
+              "Result"
+            ],
+            "type": 15
+          },
+          "selector": "0x96b79048"
+        },
+        {
+          "args": [],
+          "docs": [
+            " Processes a oracle request by a rollup transaction"
+          ],
+          "label": "answer",
+          "mutates": false,
+          "payable": false,
+          "returnType": {
+            "displayName": [
+              "Result"
+            ],
+            "type": 16
+          },
+          "selector": "0x49993064"
+        }
+      ]
+    },
+    "storage": {
+      "struct": {
+        "fields": [
+          {
+            "layout": {
+              "cell": {
+                "key": "0x0000000000000000000000000000000000000000000000000000000000000000",
+                "ty": 0
+              }
+            },
+            "name": "owner"
+          },
+          {
+            "layout": {
+              "enum": {
+                "dispatchKey": "0x0100000000000000000000000000000000000000000000000000000000000000",
+                "variants": {
+                  "0": {
+                    "fields": [
+                      {
+                        "layout": {
+                          "struct": {
+                            "fields": [
+                              {
+                                "layout": {
+                                  "cell": {
+                                    "key": "0x0200000000000000000000000000000000000000000000000000000000000000",
+                                    "ty": 3
+                                  }
+                                },
+                                "name": "rpc"
+                              },
+                              {
+                                "layout": {
+                                  "array": {
+                                    "cellsPerElem": 1,
+                                    "layout": {
+                                      "cell": {
+                                        "key": "0x1700000000000000000000000000000000000000000000000000000000000000",
+                                        "ty": 2
+                                      }
+                                    },
+                                    "len": 20,
+                                    "offset": "0x0300000000000000000000000000000000000000000000000000000000000000"
+                                  }
+                                },
+                                "name": "anchor"
+                              },
+                              {
+                                "layout": {
+                                  "array": {
+                                    "cellsPerElem": 1,
+                                    "layout": {
+                                      "cell": {
+                                        "key": "0x3700000000000000000000000000000000000000000000000000000000000000",
+                                        "ty": 2
+                                      }
+                                    },
+                                    "len": 32,
+                                    "offset": "0x1700000000000000000000000000000000000000000000000000000000000000"
+                                  }
+                                },
+                                "name": "submit_key"
+                              },
+                              {
+                                "layout": {
+                                  "cell": {
+                                    "key": "0x3700000000000000000000000000000000000000000000000000000000000000",
+                                    "ty": 3
+                                  }
+                                },
+                                "name": "qjs"
+                              },
+                              {
+                                "layout": {
+                                  "cell": {
+                                    "key": "0x3800000000000000000000000000000000000000000000000000000000000000",
+                                    "ty": 3
+                                  }
+                                },
+                                "name": "url"
+                              },
+                              {
+                                "layout": {
+                                  "enum": {
+                                    "dispatchKey": "0x3900000000000000000000000000000000000000000000000000000000000000",
+                                    "variants": {
+                                      "0": {
+                                        "fields": [
+                                          {
+                                            "layout": {
+                                              "cell": {
+                                                "key": "0x3a00000000000000000000000000000000000000000000000000000000000000",
+                                                "ty": 3
+                                              }
+                                            },
+                                            "name": null
+                                          }
+                                        ]
+                                      },
+                                      "1": {
+                                        "fields": []
+                                      }
+                                    }
+                                  }
+                                },
+                                "name": "apikey"
+                              }
+                            ]
+                          }
+                        },
+                        "name": null
+                      }
+                    ]
+                  },
+                  "1": {
+                    "fields": []
+                  }
+                }
+              }
+            },
+            "name": "config"
+          }
+        ]
+      }
+    },
+    "types": [
+      {
+        "id": 0,
+        "type": {
+          "def": {
+            "composite": {
+              "fields": [
+                {
+                  "type": 1,
+                  "typeName": "[u8; 32]"
+                }
+              ]
+            }
+          },
+          "path": [
+            "ink_env",
+            "types",
+            "AccountId"
+          ]
+        }
+      },
+      {
+        "id": 1,
+        "type": {
+          "def": {
+            "array": {
+              "len": 32,
+              "type": 2
+            }
+          }
+        }
+      },
+      {
+        "id": 2,
+        "type": {
+          "def": {
+            "primitive": "u8"
+          }
+        }
+      },
+      {
+        "id": 3,
+        "type": {
+          "def": {
+            "primitive": "str"
+          }
+        }
+      },
+      {
+        "id": 4,
+        "type": {
+          "def": {
+            "variant": {
+              "variants": [
+                {
+                  "index": 0,
+                  "name": "None"
+                },
+                {
+                  "fields": [
+                    {
+                      "type": 3
+                    }
+                  ],
+                  "index": 1,
+                  "name": "Some"
+                }
+              ]
+            }
+          },
+          "params": [
+            {
+              "name": "T",
+              "type": 3
+            }
+          ],
+          "path": [
+            "Option"
+          ]
+        }
+      },
+      {
+        "id": 5,
+        "type": {
+          "def": {
+            "variant": {
+              "variants": [
+                {
+                  "index": 0,
+                  "name": "None"
+                },
+                {
+                  "fields": [
+                    {
+                      "type": 6
+                    }
+                  ],
+                  "index": 1,
+                  "name": "Some"
+                }
+              ]
+            }
+          },
+          "params": [
+            {
+              "name": "T",
+              "type": 6
+            }
+          ],
+          "path": [
+            "Option"
+          ]
+        }
+      },
+      {
+        "id": 6,
+        "type": {
+          "def": {
+            "composite": {
+              "fields": [
+                {
+                  "type": 7,
+                  "typeName": "[u8; 20]"
+                }
+              ]
+            }
+          },
+          "path": [
+            "primitive_types",
+            "H160"
+          ]
+        }
+      },
+      {
+        "id": 7,
+        "type": {
+          "def": {
+            "array": {
+              "len": 20,
+              "type": 2
+            }
+          }
+        }
+      },
+      {
+        "id": 8,
+        "type": {
+          "def": {
+            "variant": {
+              "variants": [
+                {
+                  "index": 0,
+                  "name": "None"
+                },
+                {
+                  "fields": [
+                    {
+                      "type": 9
+                    }
+                  ],
+                  "index": 1,
+                  "name": "Some"
+                }
+              ]
+            }
+          },
+          "params": [
+            {
+              "name": "T",
+              "type": 9
+            }
+          ],
+          "path": [
+            "Option"
+          ]
+        }
+      },
+      {
+        "id": 9,
+        "type": {
+          "def": {
+            "composite": {
+              "fields": [
+                {
+                  "type": 10,
+                  "typeName": "[u64; 4]"
+                }
+              ]
+            }
+          },
+          "path": [
+            "primitive_types",
+            "U256"
+          ]
+        }
+      },
+      {
+        "id": 10,
+        "type": {
+          "def": {
+            "array": {
+              "len": 4,
+              "type": 11
+            }
+          }
+        }
+      },
+      {
+        "id": 11,
+        "type": {
+          "def": {
+            "primitive": "u64"
+          }
+        }
+      },
+      {
+        "id": 12,
+        "type": {
+          "def": {
+            "variant": {
+              "variants": [
+                {
+                  "fields": [
+                    {
+                      "type": 13
+                    }
+                  ],
+                  "index": 0,
+                  "name": "Ok"
+                },
+                {
+                  "fields": [
+                    {
+                      "type": 14
+                    }
+                  ],
+                  "index": 1,
+                  "name": "Err"
+                }
+              ]
+            }
+          },
+          "params": [
+            {
+              "name": "T",
+              "type": 13
+            },
+            {
+              "name": "E",
+              "type": 14
+            }
+          ],
+          "path": [
+            "Result"
+          ]
+        }
+      },
+      {
+        "id": 13,
+        "type": {
+          "def": {
+            "tuple": []
+          }
+        }
+      },
+      {
+        "id": 14,
+        "type": {
+          "def": {
+            "variant": {
+              "variants": [
+                {
+                  "index": 0,
+                  "name": "BadOrigin"
+                },
+                {
+                  "index": 1,
+                  "name": "NotConfigured"
+                },
+                {
+                  "index": 2,
+                  "name": "InvalidKeyLength"
+                },
+                {
+                  "index": 3,
+                  "name": "InvaldJsCodeHashPrefix"
+                },
+                {
+                  "index": 4,
+                  "name": "FailedToCreateClient"
+                },
+                {
+                  "index": 5,
+                  "name": "NoRequestInQueue"
+                },
+                {
+                  "index": 6,
+                  "name": "FailedToDecode"
+                },
+                {
+                  "index": 7,
+                  "name": "BadAbi"
+                },
+                {
+                  "index": 8,
+                  "name": "FailedToGetStorage"
+                },
+                {
+                  "index": 9,
+                  "name": "FailedToDecodeStorage"
+                },
+                {
+                  "index": 10,
+                  "name": "FailedToDecodeOracleRequest"
+                },
+                {
+                  "index": 11,
+                  "name": "FailedToDecodeParams"
+                },
+                {
+                  "index": 12,
+                  "name": "FailedToDecodeResBody"
+                },
+                {
+                  "index": 13,
+                  "name": "FailedToDecodeByPath"
+                },
+                {
+                  "index": 14,
+                  "name": "FailedToGetInternalPath"
+                },
+                {
+                  "index": 15,
+                  "name": "Web2StatusError"
+                },
+                {
+                  "index": 16,
+                  "name": "TimesTooSmall"
+                },
+                {
+                  "index": 17,
+                  "name": "FailedToCreateRollupSession"
+                },
+                {
+                  "index": 18,
+                  "name": "FailedToCommitTx"
+                },
+                {
+                  "index": 19,
+                  "name": "FailedToSendTransaction"
+                },
+                {
+                  "index": 20,
+                  "name": "FailedToDecodeNumberFromJson"
+                },
+                {
+                  "index": 21,
+                  "name": "TypeNotSet"
+                },
+                {
+                  "index": 22,
+                  "name": "InvalidType"
+                },
+                {
+                  "index": 23,
+                  "name": "InvalidRootValue"
+                },
+                {
+                  "index": 24,
+                  "name": "NumberSignNotMatch"
+                },
+                {
+                  "index": 25,
+                  "name": "EncodeNonDecimalNumberTo256Failed"
+                },
+                {
+                  "index": 26,
+                  "name": "EncodeStringTo32BytesFailed"
+                },
+                {
+                  "index": 27,
+                  "name": "TimesParseFailed"
+                },
+                {
+                  "index": 28,
+                  "name": "NotANumberOrString"
+                },
+                {
+                  "index": 29,
+                  "name": "FailedToDecodeQjsCodeHash"
+                },
+                {
+                  "index": 30,
+                  "name": "FailedTurnQjsCodeHashToHashType"
+                },
+                {
+                  "index": 31,
+                  "name": "InvalidUtf8"
+                },
+                {
+                  "index": 32,
+                  "name": "EvalJsError"
+                },
+                {
+                  "index": 33,
+                  "name": "JsScriptReturnError"
+                }
+              ]
+            }
+          },
+          "path": [
+            "druntime",
+            "druntime",
+            "Error"
+          ]
+        }
+      },
+      {
+        "id": 15,
+        "type": {
+          "def": {
+            "variant": {
+              "variants": [
+                {
+                  "fields": [
+                    {
+                      "type": 3
+                    }
+                  ],
+                  "index": 0,
+                  "name": "Ok"
+                },
+                {
+                  "fields": [
+                    {
+                      "type": 14
+                    }
+                  ],
+                  "index": 1,
+                  "name": "Err"
+                }
+              ]
+            }
+          },
+          "params": [
+            {
+              "name": "T",
+              "type": 3
+            },
+            {
+              "name": "E",
+              "type": 14
+            }
+          ],
+          "path": [
+            "Result"
+          ]
+        }
+      },
+      {
+        "id": 16,
+        "type": {
+          "def": {
+            "variant": {
+              "variants": [
+                {
+                  "fields": [
+                    {
+                      "type": 17
+                    }
+                  ],
+                  "index": 0,
+                  "name": "Ok"
+                },
+                {
+                  "fields": [
+                    {
+                      "type": 14
+                    }
+                  ],
+                  "index": 1,
+                  "name": "Err"
+                }
+              ]
+            }
+          },
+          "params": [
+            {
+              "name": "T",
+              "type": 17
+            },
+            {
+              "name": "E",
+              "type": 14
+            }
+          ],
+          "path": [
+            "Result"
+          ]
+        }
+      },
+      {
+        "id": 17,
+        "type": {
+          "def": {
+            "variant": {
+              "variants": [
+                {
+                  "index": 0,
+                  "name": "None"
+                },
+                {
+                  "fields": [
+                    {
+                      "type": 18
+                    }
+                  ],
+                  "index": 1,
+                  "name": "Some"
+                }
+              ]
+            }
+          },
+          "params": [
+            {
+              "name": "T",
+              "type": 18
+            }
+          ],
+          "path": [
+            "Option"
+          ]
+        }
+      },
+      {
+        "id": 18,
+        "type": {
+          "def": {
+            "sequence": {
+              "type": 2
+            }
+          }
+        }
+      }
+    ]
+  }
+}
