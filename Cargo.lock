@@ -15,6 +15,7 @@ dependencies = [
 [[package]]
 name = "abi"
 version = "0.1.0"
+source = "git+https://github.com/SaaS3-Foundation/abi.git#d0798ed827f0137af54d1947c11e2b5427b1339f"
 dependencies = [
  "anyhow",
  "hex",

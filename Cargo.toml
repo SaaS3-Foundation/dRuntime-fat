@@ -29,8 +29,8 @@ ethabi = { version = "17.2.0", package = "pink-ethabi", default-features = false
 phat_offchain_rollup = { path = "../../phat-stateful-rollup/phat/crates/rollup/", default-features = false, features = ["evm"] }
 pink-kv-session = "0.2"
 
-#abi = { git = "https://github.com/SaaS3-Foundation/abi.git" }
-abi = { path = "../abi" }
+abi = { git = "https://github.com/SaaS3-Foundation/abi.git" }
+#abi = { path = "../abi" }
 
 hex = { version = "0.4", default-features = false }
 
