@@ -1,6 +1,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![feature(let_else)]
 
+#[macro_use]
 extern crate alloc;
 
 use ink_lang as ink;
@@ -28,6 +29,8 @@ mod druntime {
     use alloc::vec;
     use hex;
     use pink::http_get;
+    use pink::http_post;
+    use pink::chain_extension::HttpResponse;
     use primitive_types::U256;
 
     // Defined in SaaS3 Protocol
@@ -55,6 +58,19 @@ mod druntime {
         qjs: String,
         url: String,
         apikey: Option<String>,
+        method: String,
+        auth_type: AuthType,
+    }
+
+    #[derive(Encode, Decode, Debug, PackedLayout, SpreadLayout, PartialEq)]
+    #[cfg_attr(
+        feature = "std",
+        derive(scale_info::TypeInfo, ink_storage::traits::StorageLayout)
+    )]
+    pub enum AuthType{
+        NoAuth,
+        ApiKey,
+        Bearer,
     }
 
     #[derive(Encode, Decode, Debug, PartialEq)]
@@ -66,11 +82,13 @@ mod druntime {
         // config
         InvalidKeyLength,
         InvaldJsCodeHashPrefix,
+        NoApiKey,
         // fetching request error
         FailedToCreateClient,
         NoRequestInQueue,
         FailedToDecode,
         // handling request error
+        InvalidMethod,
         // js handling error
         BadAbi,
         FailedToGetStorage,
@@ -128,6 +146,10 @@ mod druntime {
             web2_api_url_prefix: Option<String>,
             // web2 api key
             api_key: Option<String>,
+            // web2 api method
+            method: Option<String>,
+            // auth type
+            auth_type: Option<String>,
         ) -> Result<()> {
             self.ensure_owner()?;
             if self.config.is_none() {
@@ -141,7 +163,6 @@ mod druntime {
                 if js_engine_code_hash.clone().unwrap().starts_with("0x") {
                     return Err(Error::InvaldJsCodeHashPrefix);
                 }
-                pink::debug!("submit key {:#?}", submit_key.unwrap());
                 self.config = Some(Config {
                     rpc: target_chain_rpc.unwrap(),
                     anchor: anchor_contract_addr.unwrap().into(),
@@ -149,7 +170,16 @@ mod druntime {
                     qjs: js_engine_code_hash.unwrap(),
                     url: web2_api_url_prefix.unwrap_or_default(),
                     apikey: api_key,
+                    method: method.unwrap_or("GET".to_string()),
+                    auth_type: AuthType::NoAuth,
                 });
+                let auth_type = auth_type.unwrap_or("NoAuth".into());
+                match auth_type.to_ascii_uppercase().as_str(){
+                    "NOAUTH" => self.config.as_mut().unwrap().auth_type = AuthType::NoAuth,
+                    "APIKEY" => self.config.as_mut().unwrap().auth_type = AuthType::ApiKey,
+                    "BEARER" => self.config.as_mut().unwrap().auth_type = AuthType::Bearer,
+                    _ => return Err(Error::InvalidType),
+                }
             } else {
                 if let Some(rpc) = target_chain_rpc {
                     self.config.as_mut().unwrap().rpc = rpc;
@@ -172,6 +202,17 @@ mod druntime {
                 }
                 if let Some(apikey) = api_key {
                     self.config.as_mut().unwrap().apikey = Some(apikey);
+                }
+                if let Some(method) = method {
+                    self.config.as_mut().unwrap().method = method;
+                }
+                if let Some(auth_type) = auth_type {
+                    match auth_type.to_ascii_uppercase().as_str(){
+                        "NOAUTH" => self.config.as_mut().unwrap().auth_type = AuthType::NoAuth,
+                        "APIKEY" => self.config.as_mut().unwrap().auth_type = AuthType::ApiKey,
+                        "BEARER" => self.config.as_mut().unwrap().auth_type = AuthType::Bearer,
+                        _ => return Err(Error::InvalidType),
+                    };
                 }
             }
             Ok(())
@@ -262,7 +303,35 @@ mod druntime {
             let config = self.ensure_configured()?;
             pink::debug!("config {:#?}", config);
 
-            let resp = http_get!(url);
+            let mut url = url.clone();
+            let mut headers = vec![];
+            match config.auth_type {
+                AuthType::ApiKey => {
+                    url = format!("{}&apikey={}", url, config.apikey.clone().unwrap());
+                }
+                AuthType::Bearer => {
+                    headers.push(("Authorization".to_string(), config.apikey.clone().unwrap()));
+                }
+                _ => {
+                    // do nothing
+                }
+            }
+
+            let resp: HttpResponse = match config.method.as_str() {
+                "GET" => {
+                    http_get!(url)
+                },
+                "POST" => {
+                    http_post!(url,  r#"{
+                        "model": "text-davinci-edit-001",
+                        "input": "我吃过了午饭",
+                        "instruction": "Fix the spelling mistakes"
+                      }"#, headers)
+                },
+                _ => {
+                    return Err(Error::InvalidMethod);
+                }
+            };
             if resp.status_code != 200 {
                 return Err(Error::Web2StatusError);
             }

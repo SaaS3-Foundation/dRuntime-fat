@@ -1,12 +1,12 @@
 {
   "source": {
-    "hash": "0x98a2c2643257cb9b6c10d234d08f0f18c14518db4005681d04fee7487aa322e7",
+    "hash": "0xce289d59f5d709fca71ce23db362909aa9efca6ebd089e9afac25e86678f16e1",
     "language": "ink! 3.4.0",
     "compiler": "rustc 1.68.0-nightly"
   },
   "contract": {
     "name": "druntime",
-    "version": "2.0.9",
+    "version": "2.0.10",
     "authors": [
       "tianyi <tianyi@saas3.io>"
     ]
@@ -78,6 +78,24 @@
             },
             {
               "label": "api_key",
+              "type": {
+                "displayName": [
+                  "Option"
+                ],
+                "type": 4
+              }
+            },
+            {
+              "label": "method",
+              "type": {
+                "displayName": [
+                  "Option"
+                ],
+                "type": 4
+              }
+            },
+            {
+              "label": "auth_type",
               "type": {
                 "displayName": [
                   "Option"
@@ -326,6 +344,34 @@
                                   }
                                 },
                                 "name": "apikey"
+                              },
+                              {
+                                "layout": {
+                                  "cell": {
+                                    "key": "0x3a00000000000000000000000000000000000000000000000000000000000000",
+                                    "ty": 3
+                                  }
+                                },
+                                "name": "method"
+                              },
+                              {
+                                "layout": {
+                                  "enum": {
+                                    "dispatchKey": "0x3b00000000000000000000000000000000000000000000000000000000000000",
+                                    "variants": {
+                                      "0": {
+                                        "fields": []
+                                      },
+                                      "1": {
+                                        "fields": []
+                                      },
+                                      "2": {
+                                        "fields": []
+                                      }
+                                    }
+                                  }
+                                },
+                                "name": "auth_type"
                               }
                             ]
                           }
@@ -634,122 +680,130 @@
                 },
                 {
                   "index": 4,
-                  "name": "FailedToCreateClient"
+                  "name": "NoApiKey"
                 },
                 {
                   "index": 5,
-                  "name": "NoRequestInQueue"
+                  "name": "FailedToCreateClient"
                 },
                 {
                   "index": 6,
-                  "name": "FailedToDecode"
+                  "name": "NoRequestInQueue"
                 },
                 {
                   "index": 7,
-                  "name": "BadAbi"
+                  "name": "FailedToDecode"
                 },
                 {
                   "index": 8,
-                  "name": "FailedToGetStorage"
+                  "name": "InvalidMethod"
                 },
                 {
                   "index": 9,
-                  "name": "FailedToDecodeStorage"
+                  "name": "BadAbi"
                 },
                 {
                   "index": 10,
-                  "name": "FailedToDecodeOracleRequest"
+                  "name": "FailedToGetStorage"
                 },
                 {
                   "index": 11,
-                  "name": "FailedToDecodeParams"
+                  "name": "FailedToDecodeStorage"
                 },
                 {
                   "index": 12,
-                  "name": "FailedToDecodeResBody"
+                  "name": "FailedToDecodeOracleRequest"
                 },
                 {
                   "index": 13,
-                  "name": "FailedToDecodeByPath"
+                  "name": "FailedToDecodeParams"
                 },
                 {
                   "index": 14,
-                  "name": "FailedToGetInternalPath"
+                  "name": "FailedToDecodeResBody"
                 },
                 {
                   "index": 15,
-                  "name": "Web2StatusError"
+                  "name": "FailedToDecodeByPath"
                 },
                 {
                   "index": 16,
-                  "name": "TimesTooSmall"
+                  "name": "FailedToGetInternalPath"
                 },
                 {
                   "index": 17,
-                  "name": "FailedToCreateRollupSession"
+                  "name": "Web2StatusError"
                 },
                 {
                   "index": 18,
-                  "name": "FailedToCommitTx"
+                  "name": "TimesTooSmall"
                 },
                 {
                   "index": 19,
-                  "name": "FailedToSendTransaction"
+                  "name": "FailedToCreateRollupSession"
                 },
                 {
                   "index": 20,
-                  "name": "FailedToDecodeNumberFromJson"
+                  "name": "FailedToCommitTx"
                 },
                 {
                   "index": 21,
-                  "name": "TypeNotSet"
+                  "name": "FailedToSendTransaction"
                 },
                 {
                   "index": 22,
-                  "name": "InvalidType"
+                  "name": "FailedToDecodeNumberFromJson"
                 },
                 {
                   "index": 23,
-                  "name": "InvalidRootValue"
+                  "name": "TypeNotSet"
                 },
                 {
                   "index": 24,
-                  "name": "NumberSignNotMatch"
+                  "name": "InvalidType"
                 },
                 {
                   "index": 25,
-                  "name": "EncodeNonDecimalNumberTo256Failed"
+                  "name": "InvalidRootValue"
                 },
                 {
                   "index": 26,
-                  "name": "EncodeStringTo32BytesFailed"
+                  "name": "NumberSignNotMatch"
                 },
                 {
                   "index": 27,
-                  "name": "TimesParseFailed"
+                  "name": "EncodeNonDecimalNumberTo256Failed"
                 },
                 {
                   "index": 28,
-                  "name": "NotANumberOrString"
+                  "name": "EncodeStringTo32BytesFailed"
                 },
                 {
                   "index": 29,
-                  "name": "FailedToDecodeQjsCodeHash"
+                  "name": "TimesParseFailed"
                 },
                 {
                   "index": 30,
-                  "name": "FailedTurnQjsCodeHashToHashType"
+                  "name": "NotANumberOrString"
                 },
                 {
                   "index": 31,
-                  "name": "InvalidUtf8"
+                  "name": "FailedToDecodeQjsCodeHash"
                 },
                 {
                   "index": 32,
-                  "name": "EvalJsError"
+                  "name": "FailedTurnQjsCodeHashToHashType"
                 },
                 {
                   "index": 33,
+                  "name": "InvalidUtf8"
+                },
+                {
+                  "index": 34,
+                  "name": "EvalJsError"
+                },
+                {
+                  "index": 35,
                   "name": "JsScriptReturnError"
                 }
               ]
