@@ -28,9 +28,9 @@ mod druntime {
     use abi::{encode::str_chunk32_bytes, ABI};
     use alloc::vec;
     use hex;
+    use pink::chain_extension::HttpResponse;
     use pink::http_get;
     use pink::http_post;
-    use pink::chain_extension::HttpResponse;
     use primitive_types::U256;
 
     // Defined in SaaS3 Protocol
@@ -67,7 +67,7 @@ mod druntime {
         feature = "std",
         derive(scale_info::TypeInfo, ink_storage::traits::StorageLayout)
     )]
-    pub enum AuthType{
+    pub enum AuthType {
         NoAuth,
         ApiKey,
         Bearer,
@@ -169,16 +169,23 @@ mod druntime {
                     submit_key: submit_key.unwrap().into(),
                     qjs: js_engine_code_hash.unwrap(),
                     url: web2_api_url_prefix.unwrap_or_default(),
-                    apikey: api_key,
+                    apikey: api_key.clone(),
                     method: method.unwrap_or("GET".to_string()),
                     auth_type: AuthType::NoAuth,
                 });
                 let auth_type = auth_type.unwrap_or("NoAuth".into());
-                match auth_type.to_ascii_uppercase().as_str(){
+                match auth_type.to_ascii_uppercase().as_str() {
                     "NOAUTH" => self.config.as_mut().unwrap().auth_type = AuthType::NoAuth,
                     "APIKEY" => self.config.as_mut().unwrap().auth_type = AuthType::ApiKey,
                     "BEARER" => self.config.as_mut().unwrap().auth_type = AuthType::Bearer,
                     _ => return Err(Error::InvalidType),
+                }
+                if let Some(ak) = api_key {
+                    if self.config.as_mut().unwrap().auth_type == AuthType::Bearer
+                        && !ak.starts_with("Bearer ")
+                    {
+                        self.config.as_mut().unwrap().apikey = Some(format!("Bearer {}", ak));
+                    }
                 }
             } else {
                 if let Some(rpc) = target_chain_rpc {
@@ -207,7 +214,7 @@ mod druntime {
                     self.config.as_mut().unwrap().method = method;
                 }
                 if let Some(auth_type) = auth_type {
-                    match auth_type.to_ascii_uppercase().as_str(){
+                    match auth_type.to_ascii_uppercase().as_str() {
                         "NOAUTH" => self.config.as_mut().unwrap().auth_type = AuthType::NoAuth,
                         "APIKEY" => self.config.as_mut().unwrap().auth_type = AuthType::ApiKey,
                         "BEARER" => self.config.as_mut().unwrap().auth_type = AuthType::Bearer,
@@ -301,6 +308,10 @@ mod druntime {
         #[ink(message)]
         pub fn test_run_js(&self, url: String, path: String) -> Result<String> {
             let config = self.ensure_configured()?;
+
+            #[cfg(feature = "std")]
+            println!("config {:#?}", config);
+
             pink::debug!("config {:#?}", config);
 
             let mut url = url.clone();
@@ -311,36 +322,53 @@ mod druntime {
                 }
                 AuthType::Bearer => {
                     headers.push(("Authorization".to_string(), config.apikey.clone().unwrap()));
+                    headers.push(("Content-Type".to_string(), "application/json".to_string()));
                 }
                 _ => {
                     // do nothing
                 }
             }
 
+            #[cfg(feature = "std")]
+            println!("url {:#?}, headers {:#?}", url, headers);
+
             let resp: HttpResponse = match config.method.as_str() {
                 "GET" => {
                     http_get!(url)
-                },
+                }
                 "POST" => {
-                    http_post!(url,  r#"{
+                    #[cfg(feature = "std")]
+                    println!("doing http_post!");
+
+                    http_post!(
+                        url,
+                        r#"{
                         "model": "text-davinci-edit-001",
                         "input": "我吃过了午饭",
                         "instruction": "Fix the spelling mistakes"
-                      }"#, headers)
-                },
+                      }"#,
+                        headers
+                    )
+                }
                 _ => {
                     return Err(Error::InvalidMethod);
                 }
             };
-            if resp.status_code != 200 {
-                return Err(Error::Web2StatusError);
-            }
+            #[cfg(feature = "std")]
+            println!("response code {}, {:#?}", resp.status_code, resp.body);
 
             #[cfg(feature = "std")]
-            println!("Got response {:?}", resp.body);
+            println!("Got response {:#?}", resp.body);
 
             let jt = core::str::from_utf8(resp.body.as_slice()).map_err(|_| Error::InvalidUtf8)?;
             pink::debug!("Json string: {:#?}", jt);
+
+            #[cfg(feature = "std")]
+            println!("Json string: {:#?}", jt);
+
+            if resp.status_code != 200 {
+                return Err(Error::Web2StatusError);
+            }
 
             let v = self.run_js(config.qjs.clone(), jt.to_string(), path)?;
             Ok(v)
@@ -627,7 +655,7 @@ mod druntime {
             println!("{:#?}", v);
         }
 
-        fn consts() -> (String, H160, String) {
+        fn consts() -> (String, H160, String, U256) {
             dotenvy::dotenv().ok();
             // let rpc = env::var("RPC").unwrap();
             //let rpc = "https://goerli.infura.io/v3/e5cbadfb7319409f981ee0231c256639".to_string();
@@ -642,7 +670,41 @@ mod druntime {
                 .try_into()
                 .expect("invald length");
             let anchor_addr: H160 = anchor_addr.into();
-            (rpc, anchor_addr, qjs.to_string())
+
+            let submit_key: [u8; 32] = hex::decode("")
+                .expect("hex decode failed")
+                .try_into()
+                .expect("invalid length");
+            let submit_key: U256 = submit_key.into();
+            (rpc, anchor_addr, qjs.to_string(), submit_key)
+        }
+
+        #[ink::test]
+        fn test_run_js() {
+            let _ = env_logger::try_init();
+            pink_extension_runtime::mock_ext::mock_all_ext();
+
+            let mut oracle = Oracle::default();
+            let (rpc, anchor, qjs, submit_key) = consts();
+            let r = oracle.config(
+                Some(rpc),
+                Some(anchor),
+                Some(submit_key),
+                Some(qjs),
+                //Some("https://api.openai.com/v1/completions".to_string()),
+                Some("https://httpbin.org/post".to_string()),
+                Some("sk-2I4".to_string()),
+                Some("POST".to_string()),
+                Some("Bearer".to_string()),
+            );
+            assert!(r.is_ok(), "config failed");
+            let r = oracle.test_run_js(
+                "https://api.openai.com/v1/edits".to_string(),
+                //"https://httpbin.org/post".to_string(),
+                "choices.0.text".to_string(),
+            );
+            println!("{:#?}", r);
+            assert!(r.is_ok(), "test run js failed");
         }
     }
 }
